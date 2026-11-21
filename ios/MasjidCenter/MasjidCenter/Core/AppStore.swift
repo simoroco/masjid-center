@@ -801,7 +801,15 @@ final class AppStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// "Permanent silence" button: stops whatever is playing, wipes the
+    /// objective reminder times, turns the "iOS notifications" master switch
+    /// OFF (all pending iOS notifications are removed) and mutes the whole
+    /// athan matrix + the Friday recitation (locally or on the server).
     func permanentSilence() async {
+        await stopAllAudio()                    // same as the "Stop playing…" button
+        local.snap.objectiveReminders = [:]
+        local.save()
+        notificationsEnabled = false            // master OFF → all pending requests removed
         if isStandalone {
             local.bulkSchedule(enabled: false)
             schedule = local.snap.schedule

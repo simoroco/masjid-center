@@ -196,16 +196,13 @@
                         <label id="icsLabel">ICS link:</label>
                         <input type="text" id="icsUrl" class="input-field" placeholder="ICS calendar URL">
                         <p class="help-text">
-                            Use the ICS link to configure your location and athan times, then retrieve it. Please
-                            visit:
+                            Use the ICS link to configure your location and athan times:
                             <a href="https://prayerwebcal.dsultan.com/" target="_blank">Prayer WebCal</a>
                         </p>
                         <button id="updateLocationBtn" class="btn" style="flex: 1;"><svg class="icon"><use href="#i-refresh"/></svg> Apply ICS link configuration</button><br>
                         <button id="forceUpdateBtn" class="btn" style="flex: 1;"><svg class="icon"><use href="#i-refresh"/></svg> Update athan times now</button>
                         <p class="help-text">
-                            Prayer times are automatically updated every day at 12:00 AM<br>
-                            Fetches the next 3 months - Past data is preserved<br>
-                            The reference time is the server time (not the web client time)
+                            Prayer times are automatically updated. The reference time is the server time
                         </p>
                     </div>
                 </div>
@@ -268,7 +265,7 @@
                         </div>
 
                         <p class="help-text" style="margin-bottom: 15px;">
-                            Al Kahf sourat listening every Friday at a specific time
+                            Al Kahf sourat listening every Friday (on the server only)
                         </p>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <select id="fridayQuranHour" class="input-field" style="width: 80px;">
@@ -404,7 +401,7 @@
                                     class="inline-code">Loading...</code><br><strong>
                                     <svg class="icon"><use href="#i-volume-x"/></svg> Stop all playing audio in the server: </strong><br><code id="stopAudioCommand"
                                     class="inline-code">Loading...</code><br><strong>
-                                    <svg class="icon"><use href="#i-volume-x"/></svg> Permanent silence (athan calls & quran recitation): </strong><br><code id="permanentSilenceCommand"
+                                    <svg class="icon"><use href="#i-volume-x"/></svg> Permanent silence: </strong><br><code id="permanentSilenceCommand"
                                     class="inline-code">Loading...</code>
                             </div>
                         </div>

@@ -22,6 +22,9 @@ struct SettingsSheet: View {
     @State private var busy = false
     @State private var cityDraft = ""
     @State private var selectedObjectiveId: String? = nil
+    @State private var confirmStandalone = false
+    @State private var confirmSilence = false
+    @State private var reminderDeleteTarget: ReminderTarget? = nil
     @StateObject private var location = LocationManager()
     @StateObject private var citySearch = CitySearchCompleter()
 
@@ -61,7 +64,7 @@ struct SettingsSheet: View {
                     accordion(0, "General", "wrench") { generalSection }
                     accordion(1, "Location", "mappin") { locationSection }
                     accordion(2, "Athan call", "building") { athanSection }
-                    accordion(3, "Tasbih & Objectives", "checklist") { tasbihObjectivesSection }
+                    accordion(3, "Objectives", "checklist") { tasbihObjectivesSection }
                     accordion(4, "Quran recitation", "book") { quranSection }
                     accordion(5, "Audio control", "speaker.wave.1") { audioSection }
                     accordion(6, "Backup & Restore", "externaldrive") { backupSection }
@@ -128,11 +131,39 @@ struct SettingsSheet: View {
         .sheet(isPresented: $showExporter) {
             if let exportURL { ShareSheet(items: [exportURL]) }
         }
+        .alert("Switch to standalone mode?", isPresented: $confirmStandalone) {
+            Button("Disconnect", role: .destructive) { store.switchToStandalone() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Disconnects from \(store.serverDisplayHost). The app keeps working on this iPhone only — nothing is deleted on the server.")
+        }
+        .alert(
+            "Remove the \(reminderDeleteTarget?.time ?? "") reminder?",
+            isPresented: Binding(
+                get: { reminderDeleteTarget != nil },
+                set: { if !$0 { reminderDeleteTarget = nil } }),
+            presenting: reminderDeleteTarget
+        ) { t in
+            Button("Remove", role: .destructive) {
+                store.removeObjectiveReminder(t.action.id, at: t.index)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { t in
+            Text("\"\(t.action.name)\" will no longer send the \(t.time) daily reminder (iOS app only).")
+        }
         .alert("Reset prayers & objectives?", isPresented: $confirmReset) {
             Button("Reset", role: .destructive) { Task { await store.resetChecks() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Remove all check marks from prayers and objectives (Coran, Tasbih & Nawafil)")
+        }
+        .alert("Enable permanent silence?", isPresented: $confirmSilence) {
+            Button("Enable", role: .destructive) {
+                Task { await store.permanentSilence(); store.showToast("Permanent silence enabled") }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns \"iOS notifications\" off.")
         }
         .alert("Restore default configuration?", isPresented: $confirmRestore) {
             Button("Restore", role: .destructive) { Task { busy = true; await store.restoreDefaults(); busy = false } }
@@ -219,6 +250,14 @@ struct SettingsSheet: View {
 
     private var isTodayRamadan: Bool { store.ramadanDates.contains(store.todayStr) }
 
+    /// A reminder row pending delete confirmation.
+    private struct ReminderTarget: Identifiable {
+        let action: ActionItem
+        let index: Int
+        let time: String
+        var id: String { "\(action.id)-\(index)-\(time)" }
+    }
+
     // MARK: - Accordion wrapper
 
     @ViewBuilder
@@ -268,7 +307,7 @@ struct SettingsSheet: View {
                 Image(systemName: store.isStandalone ? "iphone" : "wifi")
                 Text(store.isStandalone
                      ? "Standalone app"
-                     : "Sync: \(store.serverDisplayHost)")
+                     : "Server: \(store.serverDisplayHost)")
                     .font(.system(size: 14, weight: .bold))
             }
             .foregroundStyle(store.isStandalone ? theme.textAccent : .white)
@@ -281,13 +320,46 @@ struct SettingsSheet: View {
 
             infoCard
 
-            ToggleRow(theme: theme, title: "Dark mode",
-                      isOn: Binding(get: { store.settings["dark_mode"] == "1" },
-                                    set: { v in Task { await store.updateSetting("dark_mode", v ? "1" : "0") } }))
-            .accessibilityIdentifier("darkModeToggle")
-
-            Text("Enable dark mode for a comfortable viewing experience in low-light environments")
-                .font(.system(size: 13)).foregroundStyle(theme.helpText)
+            // iOS-specific: server address (the web app is served same-origin).
+            // Connected → the connect form is pointless, show only the
+            // disconnect button; standalone → show the connect form.
+            VStack(alignment: .leading, spacing: 6) {
+                if store.isStandalone {
+                    Text("Masjid Center Server:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+                    HStack(spacing: 8) {
+                        TextField("192.168.1.50 or pi.local", text: $serverDraft)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .onSubmit { hideKeyboard() }
+                            .font(.system(size: 14))
+                            .padding(10)
+                            .background(theme.inputBg)
+                            .foregroundStyle(theme.inputText)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.inputBorder, lineWidth: 1))
+                            .accessibilityIdentifier("serverField")
+                        Button("Connect") { store.connectToServer(serverDraft) }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(Color(hex: 0x2A6DD1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityIdentifier("applyServerBtn")
+                    }
+                    Text("Optional: connect to Masjid Center Server to sync data and have Athan on its speakers.")
+                        .font(.system(size: 12)).foregroundStyle(theme.helpText)
+                } else {
+                    PrimaryButton(theme: theme, title: "Switch to standalone mode",
+                                  systemImage: "iphone", danger: true,
+                                  accessibility: "standaloneModeBtn") {
+                        confirmStandalone = true
+                    }
+                    Text("Disconnects from \(store.serverDisplayHost) — the app keeps working on this iPhone only (prayer times, objectives, reminders). Nothing is deleted on the server.")
+                        .font(.system(size: 12)).foregroundStyle(theme.helpText)
+                }
+            }
 
             // Master switch for everything the app emits on this iPhone:
             // notifications AND sounds (was in "Audio control").
@@ -295,45 +367,13 @@ struct SettingsSheet: View {
                       isOn: Binding(get: { store.notificationsEnabled },
                                     set: { store.notificationsEnabled = $0 }))
                 .accessibilityIdentifier("notificationsToggle")
-            Text("Master switch for all notifications and sounds the app emits on this iPhone: prayer alerts, objective reminders, athan, Quran recitation and test sounds. When off, the iOS app stays completely silent — even if sounds are configured in \"Athan call\", \"Tasbih & Objectives\" or \"Quran recitation\".")
+            Text("Enable or silence all notifications and Masjid Center sounds on this iPhone.")
                 .font(.system(size: 13)).foregroundStyle(theme.helpText)
 
-            // iOS-specific: server address (the web app is served same-origin).
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Sync with Masjid Center Server").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
-                HStack(spacing: 8) {
-                    TextField("192.168.1.50 or pi.local", text: $serverDraft)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .onSubmit { hideKeyboard() }
-                        .font(.system(size: 14))
-                        .padding(10)
-                        .background(theme.inputBg)
-                        .foregroundStyle(theme.inputText)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.inputBorder, lineWidth: 1))
-                        .accessibilityIdentifier("serverField")
-                    Button("Apply") { store.connectToServer(serverDraft) }
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
-                        .background(Color(hex: 0x2A6DD1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .accessibilityIdentifier("applyServerBtn")
-                }
-                Text(store.isStandalone
-                     ? "Optional: connect to Masjid Center Server to sync data and have Athan on its speakers."
-                     : "IP address or domain of Masjid Center Server (optional)")
-                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
-                if !store.isStandalone {
-                    Button("Disconnect — use standalone mode") { store.switchToStandalone() }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.danger)
-                        .accessibilityIdentifier("standaloneModeBtn")
-                }
-            }
+            ToggleRow(theme: theme, title: "Dark mode",
+                      isOn: Binding(get: { store.settings["dark_mode"] == "1" },
+                                    set: { v in Task { await store.updateSetting("dark_mode", v ? "1" : "0") } }))
+            .accessibilityIdentifier("darkModeToggle")
         }
     }
 
@@ -372,8 +412,6 @@ struct SettingsSheet: View {
 
     private var tasbihObjectivesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            tasbihGoalPicker
-
             Text("Objectives").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             VStack(spacing: 0) {
                 let hidden = store.local.snap.hiddenBuiltins
@@ -399,8 +437,10 @@ struct SettingsSheet: View {
                 editingAction = nil
                 showActionEditor = true
             }
-            Text("Tap an objective to set its daily reminder notifications (iOS app only). The pencil edits a custom objective. The trash hides a built-in (restorable below) or deletes a custom one.")
+            Text("Select an objective to set its daily reminder (iOS app only).")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            tasbihGoalPicker
         }
     }
 
@@ -464,13 +504,28 @@ struct SettingsSheet: View {
     /// never sent to the server.
     private func objectiveReminderPanel(_ a: ActionItem) -> some View {
         let times = store.objectiveReminderTimes(for: a.id)
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(systemName: "bell.fill").font(.system(size: 13))
                     .foregroundStyle(theme.textAccent)
-                Text("Daily reminders (\(times.count)/5)")
+                Text("Daily reminders:")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.sheetText)
                 Spacer()
+                Text("\(times.count)/5")
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(theme.muted)
+                // "+"-only add button — disabled once 5 reminders exist.
+                Button { store.addObjectiveReminder(a.id) } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(times.count < 5 ? theme.textAccent : theme.muted.opacity(0.5))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(times.count >= 5)
+                .accessibilityIdentifier("reminderAdd-\(a.name)")
             }
             ForEach(Array(times.enumerated()), id: \.offset) { i, t in
                 HStack(spacing: 10) {
@@ -485,26 +540,23 @@ struct SettingsSheet: View {
                         displayedComponents: .hourAndMinute)
                         .labelsHidden()
                         .accessibilityIdentifier("reminderTime-\(a.name)-\(i)")
-                    Button { store.removeObjectiveReminder(a.id, at: i) } label: {
+                    Button {
+                        reminderDeleteTarget = ReminderTarget(action: a, index: i, time: t)
+                    } label: {
                         Image(systemName: "minus.circle.fill").font(.system(size: 20))
                             .foregroundStyle(theme.danger)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("reminderRemove-\(a.name)-\(i)")
                 }
+                .padding(.vertical, 4)
             }
-            Button { store.addObjectiveReminder(a.id) } label: {
-                Label("Add reminder", systemImage: "plus.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(times.count < 5 ? theme.textAccent : theme.muted.opacity(0.5))
+            if times.isEmpty {
+                Text("No reminders — tap + to add one.")
+                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
             }
-            .buttonStyle(.plain)
-            .disabled(times.count >= 5)
-            .accessibilityIdentifier("reminderAdd-\(a.name)")
-            Text("Up to 5 per day — notifications from the iOS app on this iPhone only (nothing is sent to the server). They can only be silenced by \"iOS notifications\" in General, or by removing all reminders.")
-                .font(.system(size: 12)).foregroundStyle(theme.helpText)
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, 12).padding(.vertical, 12)
         .background(theme.inputBg)
         .transition(.opacity)
     }
@@ -592,7 +644,8 @@ struct SettingsSheet: View {
                 .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.sheetText)
                 .accessibilityIdentifier("currentCity")
             PrimaryButton(theme: theme, title: "Use my location",
-                          systemImage: "location.fill", disabled: busy || location.resolving,
+                          systemImage: "location.fill",
+                          disabled: busy || location.resolving || !store.isStandalone,
                           accessibility: "locateBtn") {
                 Task {
                     busy = true
@@ -615,6 +668,7 @@ struct SettingsSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.inputBorder, lineWidth: 1))
                     .accessibilityIdentifier("cityField")
                     .onSubmit { searchCity(); hideKeyboard() }
+                    .disabled(!store.isStandalone)
                 Button { searchCity() } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
@@ -623,9 +677,10 @@ struct SettingsSheet: View {
                         .background(Color(hex: 0x2A6DD1))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .disabled(busy || cityDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(busy || !store.isStandalone || cityDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                 .accessibilityIdentifier("citySearchBtn")
             }
+            .opacity(store.isStandalone ? 1 : 0.5)
             .onChange(of: cityDraft) { _, q in citySearch.update(q) }
             if !citySearch.results.isEmpty {
                 VStack(spacing: 0) {
@@ -659,7 +714,7 @@ struct SettingsSheet: View {
             }
             Text(store.isStandalone
                  ? "Prayer times are downloaded directly from the ICS link on this iPhone."
-                 : "The new location is applied to the server ICS link.")
+                 : "In server mode the location is managed by the server — city search is disabled; use the ICS link below.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             Text("ICS link:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
@@ -675,7 +730,7 @@ struct SettingsSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.inputBorder, lineWidth: 1))
                 .accessibilityIdentifier("icsUrlField")
-            Text("Use the ICS link to configure your location and athan times, then retrieve it. Please visit: Prayer WebCal (prayerwebcal.dsultan.com)")
+            Text("Use the ICS link to configure your location and athan times: prayerwebcal.dsultan.com")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             PrimaryButton(theme: theme, title: "Apply ICS link configuration",
@@ -698,7 +753,7 @@ struct SettingsSheet: View {
                     store.showToast(msg)
                 }
             }
-            Text("Prayer times are automatically updated every day at 12:00 AM\nFetches the next 3 months - Past data is preserved\nThe reference time is the server time (not the app time)")
+            Text("Prayer times are automatically updated. The reference time is the server time")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
         }
     }
@@ -724,7 +779,7 @@ struct SettingsSheet: View {
                             set: { v in Task { await store.updateSetting("audio_file", v) } }))
                 .accessibilityIdentifier("audioFilePicker")
             Text(store.isStandalone
-                 ? "Athan files bundled with the app — they play entirely on this iPhone."
+                 ? ""
                  : "Upload your audio files into /audio/athan so they appear in this list.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
@@ -749,7 +804,7 @@ struct SettingsSheet: View {
                             set: { v in Task { await store.updateSetting("friday_quran_file", v) } }))
                 .accessibilityIdentifier("fridayQuranFilePicker")
             Text(store.isStandalone
-                 ? "Bundled with the app — the recitation plays entirely on this iPhone."
+                 ? ""
                  : "Upload your audio files into /audio/coran so they appear in this list.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
@@ -758,19 +813,22 @@ struct SettingsSheet: View {
                 Task { await store.playFullQuran() }
             }
             Text(store.isStandalone
-                 ? "Plays the bundled file on this iPhone. Recitation continues until the end."
+                 ? ""
                  : "Plays on server and/or app (depending on audio output setting). Recitation continues until the end.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             Text("Schedule every Friday:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             ToggleRow(theme: theme, title: "Al Kahf Sourat on Friday",
                       isOn: Binding(get: { store.settings["friday_quran_enabled"] == "1" },
-                                    set: { v in Task { await store.updateSetting("friday_quran_enabled", v ? "1" : "0") } }))
+                                    set: { v in Task { await store.updateSetting("friday_quran_enabled", v ? "1" : "0") } }),
+                      disabled: store.isStandalone)
             .accessibilityIdentifier("fridayQuranToggle")
-            Text("Al Kahf sourat listening every Friday at a specific time")
+            Text("Al Kahf sourat listening every Friday (on the server only)")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             QuranTimePicker(theme: theme)
+                .disabled(store.isStandalone)
+                .opacity(store.isStandalone ? 0.5 : 1)
         }
     }
 
@@ -788,11 +846,11 @@ struct SettingsSheet: View {
                           accessibility: "stopAudioBtn") {
                 Task { await store.stopAllAudio() }
             }
-            PrimaryButton(theme: theme, title: "Athan call now (app)",
+            PrimaryButton(theme: theme, title: "Athan call now",
                           systemImage: "speaker.wave.2", accessibility: "testAthanBtn") {
                 store.testAthanWeb()
             }
-            Text("The athan plays on this iPhone at each enabled prayer time while the app is open. Use notifications (iPhone settings) to be alerted when it is closed.")
+            Text("Enable notifications in General to have the athan call even when the app is closed.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
         }
     }
@@ -965,6 +1023,14 @@ struct SettingsSheet: View {
             Text("Export all settings to a CSV file for backup or import to restore configuration")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
+            PrimaryButton(theme: theme, title: "Permanent silence",
+                          systemImage: "speaker.slash", danger: true, disabled: busy,
+                          accessibility: "permanentSilenceBtn") {
+                confirmSilence = true
+            }
+            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns \"iOS notifications\" off.")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.danger)
+
             PrimaryButton(theme: theme, title: "Reset iOS app configuration",
                           systemImage: "iphone", danger: true, disabled: busy,
                           accessibility: "resetAppBtn") {
@@ -988,12 +1054,6 @@ struct SettingsSheet: View {
             }
             Text("This will reset ALL settings to their default values")
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.danger)
-
-            PrimaryButton(theme: theme, title: "Permanent silence (mute all athans + Friday Quran)",
-                          systemImage: "speaker.slash", danger: true, disabled: busy,
-                          accessibility: "permanentSilenceBtn") {
-                Task { await store.permanentSilence(); store.showToast("Permanent silence enabled") }
-            }
         }
         .overlay {
             if busy { ProgressView().scaleEffect(1.3).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black.opacity(0.15)) }
