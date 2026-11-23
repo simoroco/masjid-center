@@ -177,6 +177,22 @@ struct ContentView: View {
         .sheet(isPresented: $showPrayerOverview) { PrayerOverviewSheet().environmentObject(store) }
         .sheet(isPresented: $showStats) { StatisticsSheet().environmentObject(store) }
         .sheet(isPresented: $showSettings) { SettingsSheet().environmentObject(store) }
+        // E2E probe: launched with -notifDebug, exposes the pending
+        // notification identifiers so tests can assert what is scheduled.
+        .background {
+            if ProcessInfo.processInfo.arguments.contains("-notifDebug") {
+                Text(store.notifDebugSummary)
+                    .accessibilityIdentifier("notifDebug")
+                    .accessibilityValue(store.notifDebugSummary)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.001)
+                Text(store.notifSoundSummary)
+                    .accessibilityIdentifier("notifSounds")
+                    .accessibilityValue(store.notifSoundSummary)
+                    .frame(width: 1, height: 1)
+                    .opacity(0.001)
+            }
+        }
     }
 
     // MARK: Top bar — settings + history (left), prayer-overview / mute (right)

@@ -80,6 +80,7 @@ function logWarn(...args) {
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+app.use('/downloads', express.static(path.join(__dirname, 'downloads')));   // iOS app IPA download
 
 // Database initialization
 log('🚀 Starting Masjid Center server initialization...');

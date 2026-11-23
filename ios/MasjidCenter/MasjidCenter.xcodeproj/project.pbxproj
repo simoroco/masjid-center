@@ -19,7 +19,9 @@
 		6007EBA76ED4E9E08317E473 /* PrayerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1DB94B8C1C9769498517EC /* PrayerListView.swift */; };
 		70BA62F0C16331B41F5BA113 /* Athan - Omar Hisham Al Arabi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 7303312B11FE2AC405A695BA /* Athan - Omar Hisham Al Arabi.mp3 */; };
 		74B9C32B4D0F7067DDF63F81 /* CalendarSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2761541D120274DFBE82E084 /* CalendarSheet.swift */; };
+		75902C50EBA565C2F6CD93FF /* MasjidCenterNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 384C7756456A5AD847C30283 /* MasjidCenterNotificationsTests.swift */; };
 		783E00339EB8A121B6715D56 /* MasjidCenterStandaloneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E70ED155E100399A7FF0644 /* MasjidCenterStandaloneTests.swift */; };
+		7B66FEF40FF189C2D90B5F5C /* NotificationSoundMaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C61D1A3DB2236788DC5B1C2 /* NotificationSoundMaker.swift */; };
 		87F0AB69BAEBB27DB228FD2A /* Sourat Al Kahf - Hani Arrifai.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = B40D79547DFE5AAB38DA3B36 /* Sourat Al Kahf - Hani Arrifai.mp3 */; };
 		8EE4AFD7670CF90B204CE5AC /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BAE3A708B9A9506BEA01DCC /* SettingsSheet.swift */; };
 		91B32E1AE9299385BFC81A85 /* TasbihView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DEDFB494782F44E78FC114D /* TasbihView.swift */; };
@@ -64,6 +66,7 @@
 		2D961B5DFFAB8B0054555A6B /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		34125AB13FD79AA8AE77A099 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
 		37FF4C45B66814614EBD4644 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		384C7756456A5AD847C30283 /* MasjidCenterNotificationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasjidCenterNotificationsTests.swift; sourceTree = "<group>"; };
 		3A494DC81457BD3633B90AD0 /* ServerDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDiscovery.swift; sourceTree = "<group>"; };
 		3AA08BE3162EDBA5DB00FEB2 /* MasjidCenterUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MasjidCenterUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A422062EBDEDEF3FE916DE2 /* NextPrayerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextPrayerCard.swift; sourceTree = "<group>"; };
@@ -71,6 +74,7 @@
 		52F28B5F9778EB67D5D181A6 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		58724CC21DF638DA5C4A16C3 /* AppStoreOffline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreOffline.swift; sourceTree = "<group>"; };
 		684CD90D5257CC473FF9DF2A /* PrayerOverviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerOverviewSheet.swift; sourceTree = "<group>"; };
+		6C61D1A3DB2236788DC5B1C2 /* NotificationSoundMaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSoundMaker.swift; sourceTree = "<group>"; };
 		6DD2DE2B4C5CFC377D4B458B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		71E147E0A4611FFFE34FC1F6 /* ServerSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSetupView.swift; sourceTree = "<group>"; };
 		7303312B11FE2AC405A695BA /* Athan - Omar Hisham Al Arabi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Omar Hisham Al Arabi.mp3"; sourceTree = "<group>"; };
@@ -95,6 +99,7 @@
 		71B53595CF6490E84ACFFD9F /* MasjidCenterUITests */ = {
 			isa = PBXGroup;
 			children = (
+				384C7756456A5AD847C30283 /* MasjidCenterNotificationsTests.swift */,
 				7E70ED155E100399A7FF0644 /* MasjidCenterStandaloneTests.swift */,
 				05696B20A676480CE63333A0 /* MasjidCenterUITests.swift */,
 			);
@@ -113,6 +118,7 @@
 				52F28B5F9778EB67D5D181A6 /* LocationManager.swift */,
 				37FF4C45B66814614EBD4644 /* Models.swift */,
 				A501E4E8978415E21A04C091 /* NotificationManager.swift */,
+				6C61D1A3DB2236788DC5B1C2 /* NotificationSoundMaker.swift */,
 				3A494DC81457BD3633B90AD0 /* ServerDiscovery.swift */,
 				7D68A0ADD9C5C8A191438AD0 /* Theme.swift */,
 			);
@@ -287,6 +293,7 @@
 				1A929B68363FCB79325BB932 /* Models.swift in Sources */,
 				9DA8AB0657FC0A1C1008A723 /* NextPrayerCard.swift in Sources */,
 				F50303FB00F1504550C25E43 /* NotificationManager.swift in Sources */,
+				7B66FEF40FF189C2D90B5F5C /* NotificationSoundMaker.swift in Sources */,
 				6007EBA76ED4E9E08317E473 /* PrayerListView.swift in Sources */,
 				B55FD5481B7573AE39FBE95D /* PrayerOverviewSheet.swift in Sources */,
 				E46DF2559A3BB93879942D86 /* ScheduleMatrixView.swift in Sources */,
@@ -304,6 +311,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				75902C50EBA565C2F6CD93FF /* MasjidCenterNotificationsTests.swift in Sources */,
 				783E00339EB8A121B6715D56 /* MasjidCenterStandaloneTests.swift in Sources */,
 				1EAD9B7B6A6F6AB916197D2F /* MasjidCenterUITests.swift in Sources */,
 			);
@@ -409,7 +417,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 7.8.0;
+				MARKETING_VERSION = 8.0.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -492,7 +500,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 7.8.0;
+				MARKETING_VERSION = 8.0.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -98,8 +98,9 @@ final class MasjidCenterUITests: XCTestCase {
 
         XCTAssertTrue(waitFor(app.buttons["closeSettings"]))
         for section in ["section-General", "section-Location", "section-Athan call",
-                        "section-Tasbih & Objectives", "section-Quran recitation",
-                        "section-Audio control", "section-Backup & Restore"] {
+                        "section-Objectives", "section-Quran recitation",
+                        "section-Audio control", "section-Notifications",
+                        "section-Backup & Restore"] {
             XCTAssertTrue(app.buttons[section].exists, "Missing \(section)")
         }
 

@@ -42,6 +42,15 @@ final class AppStore: ObservableObject {
     @Published var skipNext = false
     @Published var mutedWeekdays: [Int: Int] = [:]        // weekday (0=Sun) -> muted
     @Published var schedule: [ScheduleEntry] = []
+    /// iOS-only athan alert matrix (Settings → Athan call → iOS notification
+    /// schedule) — mirror of local.snap.iosSchedule for view reactivity.
+    @Published var iosSchedule: [ScheduleEntry] = []
+    /// Pending-notification identifiers, exposed only under the -notifDebug
+    /// launch argument so UI tests can assert what is scheduled.
+    @Published var notifDebugSummary = ""
+    /// Per-type notification sound actually applied ("default" or the file
+    /// name in Library/Sounds) — second -notifDebug probe for e2e tests.
+    @Published var notifSoundSummary = ""
     @Published var ramadanDates: Set<String> = []
     @Published var audioFiles: [String] = []
     @Published var quranFiles: [String] = []
@@ -207,10 +216,12 @@ final class AppStore: ObservableObject {
         if isStandalone { await bootStandalone(); return }
         guard configured else { return }
         booted = true
+        // Show the last locally-cached snapshot immediately — prayer times,
+        // checks, schedule — then refresh everything from the server below.
+        bootOfflineFromCache()
         if await !syncTime() {
-            // Server unreachable → offline mode from the local cache (never block the UI on timeouts).
+            // Server unreachable → stay on the local snapshot (the probe loop resyncs later).
             connected = false
-            bootOfflineFromCache()
             startLoops()
             return
         }
@@ -233,6 +244,7 @@ final class AppStore: ObservableObject {
         startLoops()
         Task { await cacheUpcomingFromServer() }
         Task { await cacheAllChecksFromServer() }
+        Task { await refreshNotificationSounds() }
         await playOnPageLoad()
     }
 
@@ -406,7 +418,9 @@ final class AppStore: ObservableObject {
     func bootOfflineFromCache() {
         settings = local.snap.settings
         schedule = local.snap.schedule
-        selectedDate = Date()
+        iosSchedule = local.snap.iosSchedule
+        // selectedDate stays as-is: today at launch, the viewed day when this
+        // runs again on a resync — loadDayLocal() reads it either way.
         loadDayLocal()
     }
 
@@ -473,6 +487,7 @@ final class AppStore: ObservableObject {
     }
 
     func loadSchedule() async {
+        iosSchedule = local.snap.iosSchedule   // local-only matrix — never fetched
         if isStandalone { schedule = local.snap.schedule; return }
         if let s = try? await api.prayerSchedule() {
             schedule = s
@@ -519,10 +534,14 @@ final class AppStore: ObservableObject {
             refreshMuteStateLocal()
             return
         }
+        let prevSkip = skipNext, prevMuted = mutedWeekdays
         skipNext = (try? await api.skipNextStatus()) ?? skipNext
         if schedule.isEmpty { await loadSchedule() }
-        if mutedWeekdays.isEmpty { await loadMutedWeekdays() }
+        await loadMutedWeekdays()   // weekday mutes changed via the web app reach the iOS alerts
         ishaPassedSync = await ishaPassedToday()
+        if skipNext != prevSkip || mutedWeekdays != prevMuted {
+            rescheduleNotifications()
+        }
 
         muteAlertManual = false
         muteAlertGeneral = false
@@ -583,7 +602,7 @@ final class AppStore: ObservableObject {
 
     func muteNext() async {
         if isStandalone || !connected {
-            muteNextLocal()
+            muteNextLocal()   // reschedules notifications itself
             if !isStandalone {
                 local.enqueue(PendingOp(kind: .muteNext, date: nil, name: "mute", value: 1, text: nil))
             }
@@ -594,6 +613,7 @@ final class AppStore: ObservableObject {
             if r.success == true {
                 skipNext = true
                 muteAlertManual = true
+                rescheduleNotifications()   // drop the next athan alert
             } else {
                 showToast(r.message ?? "Already muted")
             }
@@ -604,19 +624,21 @@ final class AppStore: ObservableObject {
 
     func unmuteNext() async {
         if isStandalone || !connected {
-            unmuteNextLocal()
+            unmuteNextLocal()   // reschedules notifications itself
             if !isStandalone { _ = try? await api.resetSkipNext() }
             return
         }
         _ = try? await api.resetSkipNext()
         skipNext = false
         muteAlertManual = false
+        rescheduleNotifications()
     }
 
     func unmuteWeekday() async {
         _ = try? await api.setMutedWeekday(DateUtil.jsDay(serverNow), muted: false)
         await loadMutedWeekdays()
         await refreshMuteState()
+        rescheduleNotifications()           // a muted weekday silences that day's alerts
     }
 
     func scheduleEnabled(_ prayer: String, _ day: Int) -> Bool? {
@@ -673,10 +695,13 @@ final class AppStore: ObservableObject {
                 local.enqueue(PendingOp(kind: .setting, date: nil, name: key, value: 0, text: value))
             }
             if key == "ics_url" { await refreshICSIfStale(force: true) }
-            if key.hasPrefix("quran") || key.contains("schedule") { rescheduleNotifications() }
+            if key.contains("quran") || key.contains("schedule") { rescheduleNotifications() }
+            if key == "audio_file" || key == "friday_quran_file" { await refreshNotificationSounds() }
             return
         }
         try? await api.setSetting(key, value)
+        if key.contains("quran") { rescheduleNotifications() }   // Friday alert time/enable
+        if key == "audio_file" || key == "friday_quran_file" { await refreshNotificationSounds() }
         if key == "ics_url" {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             await loadDay()
@@ -705,22 +730,39 @@ final class AppStore: ObservableObject {
     }
 
     func restoreDefaults() async {
-        // iOS-only config that the server can't reset: objective reminders.
+        // iOS-only config that the server can't reset: objective reminders,
+        // the per-type switches and the iOS alert matrix (re-initialized from
+        // the fresh athan matrix below).
         local.snap.objectiveReminders = [:]
-        local.save()
-        rescheduleNotifications()
+        local.snap.iosNotifAthan = true
+        local.snap.iosNotifObjectives = true
+        local.snap.iosNotifQuran = true
+        local.snap.iosNotifSoundAthan = "default"
+        local.snap.iosNotifSoundObjectives = "configured"
+        local.snap.iosNotifSoundQuran = "default"
+        deleteNotificationSounds()
+        local.snap.iosSchedule = []
         if isStandalone {
             local.snap.checks = [:]
             local.snap.activities = [:]
             local.snap.customActions = []
             local.snap.settings = [:]
             local.snap.schedule = []
-            local.ensureDefaultsAfterReset()
+            local.ensureDefaultsAfterReset()   // refills schedule, then iosSchedule copies it
+            iosSchedule = local.snap.iosSchedule
+            local.save()
+            rescheduleNotifications()
             await bootStandalone()
             return
         }
+        local.save()
+        rescheduleNotifications()
         _ = try? await api.restoreDefaults()
-        await boot()
+        await boot()                           // reloads the server matrix into snap.schedule
+        local.ensureIOSDefaults()              // iosSchedule mirrors the reset matrix
+        iosSchedule = local.snap.iosSchedule
+        local.save()
+        rescheduleNotifications()
     }
 
     /// Configuration backup in the web CSV format: from the server API when it
@@ -762,6 +804,7 @@ final class AppStore: ObservableObject {
     func resetApp() {
         stopLoops()
         audio.stopLocal()
+        deleteNotificationSounds()
         local.reset()
         if let bid = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bid)
@@ -780,6 +823,9 @@ final class AppStore: ObservableObject {
         skipNext = false
         mutedWeekdays = [:]
         schedule = []
+        iosSchedule = local.snap.iosSchedule
+        notifDebugSummary = ""
+        notifSoundSummary = ""
         ramadanDates = []
         audioFiles = []
         quranFiles = []
@@ -802,12 +848,19 @@ final class AppStore: ObservableObject {
     }
 
     /// "Permanent silence" button: stops whatever is playing, wipes the
-    /// objective reminder times, turns the "iOS notifications" master switch
-    /// OFF (all pending iOS notifications are removed) and mutes the whole
-    /// athan matrix + the Friday recitation (locally or on the server).
+    /// objective reminder times, disables every per-type iOS notification
+    /// switch, mutes the iOS alert matrix, turns the "iOS notifications"
+    /// master switch OFF (all pending iOS notifications are removed) and
+    /// mutes the whole athan matrix + the Friday recitation (locally or on
+    /// the server).
     func permanentSilence() async {
         await stopAllAudio()                    // same as the "Stop playing…" button
         local.snap.objectiveReminders = [:]
+        local.snap.iosNotifAthan = false
+        local.snap.iosNotifObjectives = false
+        local.snap.iosNotifQuran = false
+        local.bulkIOSSchedule(enabled: false)
+        iosSchedule = local.snap.iosSchedule
         local.save()
         notificationsEnabled = false            // master OFF → all pending requests removed
         if isStandalone {
@@ -895,7 +948,7 @@ final class AppStore: ObservableObject {
     /// the tap would be silently ignored, so explain why instead.
     private func requireIOSAudio() -> Bool {
         if iosAudioEnabled { return true }
-        showToast("Enable \"iOS notifications\" in Settings → General to play sounds on this iPhone")
+        showToast("Enable \"App notifications\" in Settings → Notifications to play sounds on this iPhone")
         return false
     }
 

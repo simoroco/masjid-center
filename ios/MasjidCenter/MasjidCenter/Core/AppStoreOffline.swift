@@ -111,6 +111,7 @@ extension AppStore {
         settings = local.snap.settings
         settings["ics_url"] = local.snap.icsUrl     // shown in the Location settings field
         schedule = local.snap.schedule
+        iosSchedule = local.snap.iosSchedule
         mutedWeekdays = local.snap.mutedWeekdays
         ramadanDates = Set(local.snap.ramadanDates)
         prayers = local.snap.prayers[selectedDateStr] ?? []
@@ -126,6 +127,7 @@ extension AppStore {
         startLoops()
         rescheduleNotifications()
         Task { await refreshICSIfStale() }
+        Task { await refreshNotificationSounds() }
     }
 
     /// Re-download ICS once a day or when near the end of cached data.
@@ -238,6 +240,7 @@ extension AppStore {
             if connected { await syncTime(); await loadDay() }
         }
         rescheduleNotifications()
+        Task { await refreshNotificationSounds() }
     }
 
     /// Cache the next days of prayer times (offline mode + notifications in server mode).
@@ -387,6 +390,7 @@ extension AppStore {
         local.save()
         skipNext = true
         muteAlertManual = true
+        rescheduleNotifications()   // today's remaining athan alerts are muted too
     }
 
     func unmuteNextLocal() {
@@ -394,6 +398,7 @@ extension AppStore {
         local.save()
         skipNext = false
         muteAlertManual = false
+        rescheduleNotifications()
     }
 
     // MARK: Prayer Overview (local data)
@@ -619,11 +624,17 @@ extension AppStore {
     }
 
     func rescheduleNotifications() {
-        NotificationManager.shared.reschedule(
+        let qt = (settings["friday_quran_time"] ?? "07:00")
+            .split(separator: ":").compactMap { Int($0) }
+        let plan = NotificationManager.Plan(
             prayers: local.snap.prayers,
-            scheduleEnabled: { [weak self] p, d in
-                self?.local.scheduleEnabled(p, d) ?? true
+            athanSlotEnabled: { [weak self] p, d in
+                self?.local.iosScheduleEnabled(p, d) ?? true
             },
+            athanAlerts: local.snap.iosNotifAthan,
+            mutedWeekdays: local.snap.mutedWeekdays,
+            skipNext: skipNext,
+            skipNextOneShot: !isStandalone,   // the server consumes the flag once
             reminders: allActions.map {
                 (id: $0.id, name: $0.name,
                  times: (local.snap.objectiveReminders[$0.id] ?? []).compactMap { t in
@@ -631,7 +642,148 @@ extension AppStore {
                      return p.count == 2 ? (hour: p[0], minute: p[1]) : nil
                  })
             },
-            enabled: local.snap.notificationsEnabled)
+            remindersEnabled: local.snap.iosNotifObjectives,
+            quranFriday: local.snap.iosNotifQuran
+                && settings["friday_quran_enabled"] == "1"
+                && qt.count == 2 ? (hour: qt[0], minute: qt[1]) : nil,
+            // "Notify" = the water-drop chime; "configured" = the feature's
+            // own sound (falls back to the chime while/after it can't be built).
+            athanSoundName: local.snap.iosNotifSoundAthan == "configured" && !local.snap.iosNotifAthanFile.isEmpty
+                ? local.snap.iosNotifAthanFile : "water_drop.wav",
+            reminderSoundName: "water_drop.wav",
+            quranSoundName: local.snap.iosNotifSoundQuran == "configured" && !local.snap.iosNotifQuranFile.isEmpty
+                ? local.snap.iosNotifQuranFile : "water_drop.wav",
+            masterEnabled: local.snap.notificationsEnabled)
+        let requests = NotificationManager.shared.reschedule(plan)
+        notifDebugSummary = requests.map(\.identifier).sorted().joined(separator: ";")
+        notifSoundSummary = "athan=\(plan.athanSoundName.isEmpty ? "default" : plan.athanSoundName);obj=\(plan.reminderSoundName.isEmpty ? "default" : plan.reminderSoundName);quran=\(plan.quranSoundName.isEmpty ? "default" : plan.quranSoundName)"
+    }
+
+    // MARK: iOS notification matrix + per-type switches
+
+    /// The iPhone's own athan alert matrix — independent from the playback
+    /// matrix (which drives the server or local athan audio).
+    func iosScheduleEnabled(_ prayer: String, _ day: Int) -> Bool {
+        local.iosScheduleEnabled(prayer, day)
+    }
+    func setIOSSchedule(_ prayer: String, _ day: Int, _ enabled: Bool) {
+        local.setIOSSchedule(prayer, day, enabled)
+        iosSchedule = local.snap.iosSchedule
+        rescheduleNotifications()
+    }
+    func bulkIOSScheduleDay(_ day: Int, _ enabled: Bool) {
+        local.bulkIOSSchedule(day: day, enabled: enabled)
+        iosSchedule = local.snap.iosSchedule
+        rescheduleNotifications()
+    }
+    func bulkIOSSchedulePrayer(_ prayer: String, _ enabled: Bool) {
+        local.bulkIOSSchedule(prayer: prayer, enabled: enabled)
+        iosSchedule = local.snap.iosSchedule
+        rescheduleNotifications()
+    }
+
+    /// Per-type iOS notification switches — subordinate to the master switch.
+    var iosNotifAthan: Bool {
+        get { local.snap.iosNotifAthan }
+        set { setIOSNotif(\.iosNotifAthan, newValue) }
+    }
+    var iosNotifObjectives: Bool {
+        get { local.snap.iosNotifObjectives }
+        set { setIOSNotif(\.iosNotifObjectives, newValue) }
+    }
+    var iosNotifQuran: Bool {
+        get { local.snap.iosNotifQuran }
+        set { setIOSNotif(\.iosNotifQuran, newValue) }
+    }
+    private func setIOSNotif(_ key: WritableKeyPath<LocalSnapshot, Bool>, _ value: Bool) {
+        local.snap[keyPath: key] = value
+        local.save()
+        objectWillChange.send()
+        rescheduleNotifications()
+    }
+
+    // MARK: Per-type notification sounds
+
+    /// Sound mode per type: "default" (iOS alert) or "configured" — the same
+    /// sound the feature itself uses (athan file, Quran file, water drop).
+    var iosNotifSoundAthan: String {
+        get { local.snap.iosNotifSoundAthan }
+        set { setIOSNotifSound(\.iosNotifSoundAthan, newValue) }
+    }
+    var iosNotifSoundObjectives: String {
+        get { local.snap.iosNotifSoundObjectives }
+        set { setIOSNotifSound(\.iosNotifSoundObjectives, newValue) }
+    }
+    var iosNotifSoundQuran: String {
+        get { local.snap.iosNotifSoundQuran }
+        set { setIOSNotifSound(\.iosNotifSoundQuran, newValue) }
+    }
+    private func setIOSNotifSound(_ key: WritableKeyPath<LocalSnapshot, String>, _ value: String) {
+        local.snap[keyPath: key] = value
+        local.save()
+        objectWillChange.send()
+        rescheduleNotifications()   // "default" applies instantly
+        if value == "configured" { Task { await refreshNotificationSounds() } }
+    }
+
+    /// Rebuilds the Library/Sounds notification files from the configured
+    /// feature audio (bundle or server download) when needed: sound mode is
+    /// "configured" and the source changed or the output file is missing.
+    /// Notification sounds must be .aif/.wav/.caf ≤ 30 s — mp3s get
+    /// transcoded by NotificationSoundMaker.
+    func refreshNotificationSounds() async {
+        var changed = false
+        if local.snap.iosNotifSoundAthan == "configured" {
+            let src = settings["audio_file"].flatMap { $0.isEmpty ? nil : $0 } ?? "default_athan.mp3"
+            if local.snap.iosNotifAthanFileSrc != src || !NotificationSoundMaker.soundExists(local.snap.iosNotifAthanFile) {
+                if let file = await buildNotificationSound(file: src, quran: false, out: "notif-athan.caf") {
+                    local.snap.iosNotifAthanFile = file
+                    local.snap.iosNotifAthanFileSrc = src
+                } else {
+                    local.snap.iosNotifAthanFile = ""   // resolution failed → iOS alert
+                    local.snap.iosNotifAthanFileSrc = ""
+                }
+                changed = true
+            }
+        }
+        if local.snap.iosNotifSoundQuran == "configured" {
+            let src = settings["friday_quran_file"].flatMap { $0.isEmpty ? nil : $0 } ?? AC.bundledQurans[0]
+            if local.snap.iosNotifQuranFileSrc != src || !NotificationSoundMaker.soundExists(local.snap.iosNotifQuranFile) {
+                if let file = await buildNotificationSound(file: src, quran: true, out: "notif-quran.caf") {
+                    local.snap.iosNotifQuranFile = file
+                    local.snap.iosNotifQuranFileSrc = src
+                } else {
+                    local.snap.iosNotifQuranFile = ""
+                    local.snap.iosNotifQuranFileSrc = ""
+                }
+                changed = true
+            }
+        }
+        if changed { local.save(); rescheduleNotifications() }
+    }
+
+    /// Produces a ≤30 s .caf in Library/Sounds from the configured audio file.
+    /// Bundled files transcode locally; server-only files are downloaded first.
+    private func buildNotificationSound(file: String, quran: Bool, out: String) async -> String? {
+        let dst = NotificationSoundMaker.soundsDirectory.appendingPathComponent(out)
+        let name = file.replacingOccurrences(of: ".mp3", with: "")
+        if let u = Bundle.main.url(forResource: name, withExtension: "mp3"),
+           await NotificationSoundMaker.make(from: u, to: dst) {
+            return out
+        }
+        guard !isStandalone, connected,
+              let url = quran ? api.quranURL(file) : api.athanURL(file),
+              let (tmp, _) = try? await URLSession.shared.download(from: url),
+              await NotificationSoundMaker.make(from: tmp, to: dst) else { return nil }
+        return out
+    }
+
+    /// Deletes the resolved notification sounds (app reset / full cleanup).
+    func deleteNotificationSounds() {
+        NotificationSoundMaker.delete(local.snap.iosNotifAthanFile)
+        NotificationSoundMaker.delete(local.snap.iosNotifQuranFile)
+        local.snap.iosNotifAthanFile = ""; local.snap.iosNotifAthanFileSrc = ""
+        local.snap.iosNotifQuranFile = ""; local.snap.iosNotifQuranFileSrc = ""
     }
 
     // MARK: iOS audio output

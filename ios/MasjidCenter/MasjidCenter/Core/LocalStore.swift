@@ -60,6 +60,28 @@ struct LocalSnapshot: Codable {
     var tasbihTarget: Int = 11
     var tasbihDoneDate: String = ""                   // last date tasbih target reached
     var objectiveReminders: [String: [String]] = [:]  // action id -> reminder times "HH:mm" (0-5/day)
+    // Per-type iOS notification switches (subordinate to notificationsEnabled).
+    var iosNotifAthan: Bool = true
+    var iosNotifObjectives: Bool = true
+    var iosNotifQuran: Bool = true
+    /// iOS-only athan notification matrix (prayer × weekday, same shape as
+    /// `schedule`). Fully independent: the athan playback matrix decides which
+    /// athans PLAY (server or local), this one decides which athans NOTIFY on
+    /// this iPhone. Empty = not initialized → ensureDefaults copies `schedule`.
+    var iosSchedule: [ScheduleEntry] = []
+    /// Per-type notification sound mode: "default" (iOS alert) or "configured"
+    /// (same sound as the feature — athan file / Quran file / water drop).
+    /// Objectives default to "configured": they have always used water_drop.
+    var iosNotifSoundAthan: String = "default"
+    var iosNotifSoundObjectives: String = "configured"
+    var iosNotifSoundQuran: String = "default"
+    /// Resolved notification sounds in Library/Sounds ("" = iOS default).
+    /// Written by refreshNotificationSounds(); the source name it was built
+    /// from is kept so a changed athan/quran file triggers a rebuild.
+    var iosNotifAthanFile: String = ""
+    var iosNotifAthanFileSrc: String = ""
+    var iosNotifQuranFile: String = ""
+    var iosNotifQuranFileSrc: String = ""
 
     /// Tolerant decode: a missing key falls back to the field default, so
     /// adding a field never wipes an existing install's snapshot.
@@ -98,6 +120,17 @@ struct LocalSnapshot: Codable {
         } else {
             objectiveReminders = [:]
         }
+        iosNotifAthan = try c.decodeIfPresent(Bool.self, forKey: .iosNotifAthan) ?? d.iosNotifAthan
+        iosNotifObjectives = try c.decodeIfPresent(Bool.self, forKey: .iosNotifObjectives) ?? d.iosNotifObjectives
+        iosNotifQuran = try c.decodeIfPresent(Bool.self, forKey: .iosNotifQuran) ?? d.iosNotifQuran
+        iosSchedule = try c.decodeIfPresent([ScheduleEntry].self, forKey: .iosSchedule) ?? d.iosSchedule
+        iosNotifSoundAthan = try c.decodeIfPresent(String.self, forKey: .iosNotifSoundAthan) ?? d.iosNotifSoundAthan
+        iosNotifSoundObjectives = try c.decodeIfPresent(String.self, forKey: .iosNotifSoundObjectives) ?? d.iosNotifSoundObjectives
+        iosNotifSoundQuran = try c.decodeIfPresent(String.self, forKey: .iosNotifSoundQuran) ?? d.iosNotifSoundQuran
+        iosNotifAthanFile = try c.decodeIfPresent(String.self, forKey: .iosNotifAthanFile) ?? d.iosNotifAthanFile
+        iosNotifAthanFileSrc = try c.decodeIfPresent(String.self, forKey: .iosNotifAthanFileSrc) ?? d.iosNotifAthanFileSrc
+        iosNotifQuranFile = try c.decodeIfPresent(String.self, forKey: .iosNotifQuranFile) ?? d.iosNotifQuranFile
+        iosNotifQuranFileSrc = try c.decodeIfPresent(String.self, forKey: .iosNotifQuranFileSrc) ?? d.iosNotifQuranFileSrc
     }
 
     init() {}
@@ -146,6 +179,10 @@ final class LocalStore {
             }
             snap.schedule = rows
         }
+        // The iOS notification matrix starts as a copy of the athan matrix so
+        // existing installs keep the exact same notifications; from then on it
+        // is edited independently.
+        ensureIOSDefaults()
         for k in ["athan_enabled": "1", "friday_quran_enabled": "0", "dark_mode": "0",
                   "play_on_page_load": "0", "audio_output": "app", "skip_next_athan": "0",
                   "audio_file": "default_athan.mp3", "ios_audio_enabled": "1",
@@ -160,6 +197,12 @@ final class LocalStore {
 
     /// Re-run after a manual reset to restore the default schedule matrix.
     func ensureDefaultsAfterReset() { ensureDefaults() }
+
+    /// Fills the iOS notification matrix from the athan matrix when it has
+    /// never been initialized (first launch / import / reset).
+    func ensureIOSDefaults() {
+        if snap.iosSchedule.isEmpty { snap.iosSchedule = snap.schedule }
+    }
 
     // MARK: Checks
 
@@ -195,6 +238,28 @@ final class LocalStore {
             if let p = prayer, snap.schedule[i].prayer_name != p { continue }
             if let d = day, snap.schedule[i].day_of_week != d { continue }
             snap.schedule[i].enabled = enabled ? 1 : 0
+        }
+        save()
+    }
+
+    // MARK: iOS notification matrix (local only — never synced to the server)
+
+    func iosScheduleEnabled(_ prayer: String, _ day: Int) -> Bool {
+        snap.iosSchedule.first { $0.prayer_name == prayer && $0.day_of_week == day }?.enabled == 1
+    }
+    func setIOSSchedule(_ prayer: String, _ day: Int, _ enabled: Bool) {
+        if let i = snap.iosSchedule.firstIndex(where: { $0.prayer_name == prayer && $0.day_of_week == day }) {
+            snap.iosSchedule[i].enabled = enabled ? 1 : 0
+        } else {
+            snap.iosSchedule.append(ScheduleEntry(id: nil, prayer_name: prayer, day_of_week: day, enabled: enabled ? 1 : 0))
+        }
+        save()
+    }
+    func bulkIOSSchedule(prayer: String? = nil, day: Int? = nil, enabled: Bool) {
+        for i in snap.iosSchedule.indices {
+            if let p = prayer, snap.iosSchedule[i].prayer_name != p { continue }
+            if let d = day, snap.iosSchedule[i].day_of_week != d { continue }
+            snap.iosSchedule[i].enabled = enabled ? 1 : 0
         }
         save()
     }
@@ -251,6 +316,15 @@ final class LocalStore {
         }
         for (id, times) in snap.objectiveReminders.sorted(by: { $0.key < $1.key }) where !times.isEmpty {
             csv += "objective_reminder,\(id),\(times.joined(separator: ";"))\n"
+        }
+        csv += "ios_notif,athan,\(snap.iosNotifAthan ? 1 : 0)\n"
+        csv += "ios_notif,objectives,\(snap.iosNotifObjectives ? 1 : 0)\n"
+        csv += "ios_notif,quran,\(snap.iosNotifQuran ? 1 : 0)\n"
+        csv += "ios_sound,athan,\(snap.iosNotifSoundAthan)\n"
+        csv += "ios_sound,objectives,\(snap.iosNotifSoundObjectives)\n"
+        csv += "ios_sound,quran,\(snap.iosNotifSoundQuran)\n"
+        for s in snap.iosSchedule {
+            csv += "ios_schedule,\(s.prayer_name)-\(s.day_of_week),\(s.enabled)\n"
         }
         return csv
     }
@@ -328,6 +402,35 @@ final class LocalStore {
             case "action_order" where key == "ids":
                 snap.actionOrder = value.split(separator: ";").map(String.init)
                 imported += 1
+            case "ios_notif":
+                let on = (Int(value) ?? 0) != 0
+                switch key {
+                case "athan": snap.iosNotifAthan = on
+                case "objectives": snap.iosNotifObjectives = on
+                case "quran": snap.iosNotifQuran = on
+                default: continue
+                }
+                imported += 1
+            case "ios_sound":
+                guard value == "default" || value == "configured" else { continue }
+                switch key {
+                case "athan": snap.iosNotifSoundAthan = value
+                case "objectives": snap.iosNotifSoundObjectives = value
+                case "quran": snap.iosNotifSoundQuran = value
+                default: continue
+                }
+                imported += 1
+            case "ios_schedule":   // same "name-dow" key format as prayer_schedule
+                if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]) {
+                    let name = String(key[..<i])
+                    let en = Int(value) ?? 1
+                    if let idx = snap.iosSchedule.firstIndex(where: { $0.prayer_name == name && $0.day_of_week == dow }) {
+                        snap.iosSchedule[idx].enabled = en
+                    } else {
+                        snap.iosSchedule.append(ScheduleEntry(id: nil, prayer_name: name, day_of_week: dow, enabled: en))
+                    }
+                    imported += 1
+                }
             default: break   // unknown row types are skipped, like the web importer
             }
         }

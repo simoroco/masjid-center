@@ -67,7 +67,8 @@ struct SettingsSheet: View {
                     accordion(3, "Objectives", "checklist") { tasbihObjectivesSection }
                     accordion(4, "Quran recitation", "book") { quranSection }
                     accordion(5, "Audio control", "speaker.wave.1") { audioSection }
-                    accordion(6, "Backup & Restore", "externaldrive") { backupSection }
+                    accordion(6, "Notifications", "bell") { notificationsSection }
+                    accordion(7, "Backup & Restore", "externaldrive") { backupSection }
 
                     Text(AC.appVersion)
                         .font(.system(size: 13)).foregroundStyle(theme.muted)
@@ -163,7 +164,7 @@ struct SettingsSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns \"iOS notifications\" off.")
+            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns every app notification switch off.")
         }
         .alert("Restore default configuration?", isPresented: $confirmRestore) {
             Button("Restore", role: .destructive) { Task { busy = true; await store.restoreDefaults(); busy = false } }
@@ -361,15 +362,6 @@ struct SettingsSheet: View {
                 }
             }
 
-            // Master switch for everything the app emits on this iPhone:
-            // notifications AND sounds (was in "Audio control").
-            ToggleRow(theme: theme, title: "iOS notifications",
-                      isOn: Binding(get: { store.notificationsEnabled },
-                                    set: { store.notificationsEnabled = $0 }))
-                .accessibilityIdentifier("notificationsToggle")
-            Text("Enable or silence all notifications and Masjid Center sounds on this iPhone.")
-                .font(.system(size: 13)).foregroundStyle(theme.helpText)
-
             ToggleRow(theme: theme, title: "Dark mode",
                       isOn: Binding(get: { store.settings["dark_mode"] == "1" },
                                     set: { v in Task { await store.updateSetting("dark_mode", v ? "1" : "0") } }))
@@ -534,11 +526,10 @@ struct SettingsSheet: View {
                     Text("Reminder \(i + 1)")
                         .font(.system(size: 14)).foregroundStyle(theme.sheetText)
                     Spacer()
-                    DatePicker("", selection: Binding(
+                    FiveMinuteTimePicker(selection: Binding(
                         get: { DateUtil.timeFmt.date(from: t) ?? Date() },
-                        set: { store.setObjectiveReminderTime(a.id, at: i, time: DateUtil.timeString($0)) }),
-                        displayedComponents: .hourAndMinute)
-                        .labelsHidden()
+                        set: { store.setObjectiveReminderTime(a.id, at: i, time: DateUtil.timeString($0)) }))
+                        .fixedSize()
                         .accessibilityIdentifier("reminderTime-\(a.name)-\(i)")
                     Button {
                         reminderDeleteTarget = ReminderTarget(action: a, index: i, time: t)
@@ -787,6 +778,7 @@ struct SettingsSheet: View {
             Text("Select a day to configure athans. Use \"Whole week\" to enable/disable a prayer for the entire week.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
             ScheduleMatrixView(theme: theme)
+
         }
     }
 
@@ -1004,6 +996,78 @@ struct SettingsSheet: View {
         .foregroundStyle(theme.sheetText)
     }
 
+    // MARK: - Notifications (all iOS notification options, grouped)
+
+    private var notificationsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Master switch for everything the app emits on this iPhone:
+            // notifications AND sounds.
+            ToggleRow(theme: theme, title: "App notifications",
+                      isOn: Binding(get: { store.notificationsEnabled },
+                                    set: { store.notificationsEnabled = $0 }))
+                .accessibilityIdentifier("notificationsToggle")
+            Text("Enable or silence all notifications and Masjid Center sounds on this iPhone.")
+                .font(.system(size: 13)).foregroundStyle(theme.helpText)
+
+            // Per-type switches + their notification sound, always
+            // subordinate to the master switch above.
+            ToggleRow(theme: theme, title: "Athan calls",
+                      isOn: Binding(get: { store.iosNotifAthan },
+                                    set: { store.iosNotifAthan = $0 }),
+                      disabled: !store.notificationsEnabled)
+                .accessibilityIdentifier("notifAthanToggle")
+            soundPicker(configured: "Athan call",
+                        selection: Binding(get: { store.iosNotifSoundAthan },
+                                           set: { store.iosNotifSoundAthan = $0 }),
+                        disabled: !store.notificationsEnabled || !store.iosNotifAthan,
+                        id: "notifSoundAthan")
+
+            Group {
+                Text("App Schedule:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+                Text("Which athans send a notification on this iPhone — independent from the athan schedule in \"Athan call\" (that one controls audio playback).")
+                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
+                ScheduleMatrixView(theme: theme, scope: .ios)
+            }
+            .disabled(!store.notificationsEnabled)
+            .opacity(store.notificationsEnabled ? 1 : 0.5)
+
+            ToggleRow(theme: theme, title: "Objective reminders",
+                      isOn: Binding(get: { store.iosNotifObjectives },
+                                    set: { store.iosNotifObjectives = $0 }),
+                      disabled: !store.notificationsEnabled)
+                .accessibilityIdentifier("notifObjectivesToggle")
+
+            ToggleRow(theme: theme, title: "Quran recitation",
+                      isOn: Binding(get: { store.iosNotifQuran },
+                                    set: { store.iosNotifQuran = $0 }),
+                      disabled: !store.notificationsEnabled)
+                .accessibilityIdentifier("notifQuranToggle")
+            soundPicker(configured: "Quran recitation",
+                        selection: Binding(get: { store.iosNotifSoundQuran },
+                                           set: { store.iosNotifSoundQuran = $0 }),
+                        disabled: !store.notificationsEnabled || !store.iosNotifQuran,
+                        id: "notifSoundQuran")
+
+            Text("Pick which notification types this iPhone emits. \"Notify\" plays the water-drop chime; the other choice plays the same sound the feature uses — the configured athan or Friday recitation file (trimmed to 30 s).")
+                .font(.system(size: 13)).foregroundStyle(theme.helpText)
+        }
+    }
+
+    /// "Notify" (water drop) vs the feature's own sound — full-width
+    /// segmented control, no side label so the options get all the room.
+    private func soundPicker(configured: String,
+                             selection: Binding<String>, disabled: Bool, id: String) -> some View {
+        Picker("Notification sound", selection: selection) {
+            Text("Notify").tag("default")
+            Text(configured).tag("configured")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .disabled(disabled)
+        .opacity(disabled ? 0.5 : 1)
+        .accessibilityIdentifier(id)
+    }
+
     // MARK: - Backup & Restore
 
     private var backupSection: some View {
@@ -1028,7 +1092,7 @@ struct SettingsSheet: View {
                           accessibility: "permanentSilenceBtn") {
                 confirmSilence = true
             }
-            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns \"iOS notifications\" off.")
+            Text("Stops the audio currently playing, mutes all athans and the Friday recitation, removes all objective reminders and turns every app notification switch off.")
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.danger)
 
             PrimaryButton(theme: theme, title: "Reset iOS app configuration",
@@ -1162,42 +1226,56 @@ struct VolumeSlider: View {
     }
 }
 
-// MARK: - Friday Quran time picker (hour 06-21 : minute step 5)
+// MARK: - Friday Quran time picker (native iOS hour + minute wheel)
 
 struct QuranTimePicker: View {
     @EnvironmentObject var store: AppStore
     let theme: AppTheme
 
-    private var hour: Binding<String> {
+    private var time: Binding<Date> {
         Binding(
-            get: { String((store.settings["friday_quran_time"] ?? "07:00").prefix(2)) },
-            set: { h in
-                let m = String((store.settings["friday_quran_time"] ?? "07:00").suffix(2))
-                Task { await store.updateSetting("friday_quran_time", "\(h):\(m)") }
-            })
-    }
-    private var minute: Binding<String> {
-        Binding(
-            get: { String((store.settings["friday_quran_time"] ?? "07:00").suffix(2)) },
-            set: { m in
-                let h = String((store.settings["friday_quran_time"] ?? "07:00").prefix(2))
-                Task { await store.updateSetting("friday_quran_time", "\(h):\(m)") }
-            })
+            get: { DateUtil.timeFmt.date(from: store.settings["friday_quran_time"] ?? "07:00") ?? Date() },
+            set: { d in Task { await store.updateSetting("friday_quran_time", DateUtil.timeString(d)) } })
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            PickerField(theme: theme,
-                        options: (6...21).map { String(format: "%02d", $0) },
-                        selection: hour)
-                .frame(width: 90)
-                .accessibilityIdentifier("fridayHourPicker")
-            Text(":").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.sheetText)
-            PickerField(theme: theme,
-                        options: stride(from: 0, through: 55, by: 5).map { String(format: "%02d", $0) },
-                        selection: minute)
-                .frame(width: 90)
-                .accessibilityIdentifier("fridayMinutePicker")
-        }
+        FiveMinuteTimePicker(selection: time)
+            .fixedSize()
+            .accessibilityIdentifier("fridayTimePicker")
+    }
+}
+
+// MARK: - Native iOS time picker, minutes by steps of 5 (5, 10, 15 …)
+// SwiftUI's DatePicker has no minute interval, so wrap UIDatePicker.
+
+struct FiveMinuteTimePicker: UIViewRepresentable {
+    @Binding var selection: Date
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let p = UIDatePicker()
+        p.datePickerMode = .time
+        p.preferredDatePickerStyle = .compact
+        p.minuteInterval = 5
+        p.locale = Locale(identifier: "en_GB")   // 24 h, matches the stored HH:mm
+        p.setContentHuggingPriority(.required, for: .horizontal)
+        p.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return p
+    }
+
+    func updateUIView(_ p: UIDatePicker, context: Context) {
+        context.coordinator.parent = self
+        if p.date != selection { p.setDate(selection, animated: false) }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView p: UIDatePicker, context: Context) -> CGSize? {
+        p.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject {
+        var parent: FiveMinuteTimePicker
+        init(_ parent: FiveMinuteTimePicker) { self.parent = parent }
+        @objc func changed(_ p: UIDatePicker) { parent.selection = p.date }
     }
 }

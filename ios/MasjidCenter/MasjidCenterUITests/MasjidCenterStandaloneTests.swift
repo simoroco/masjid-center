@@ -155,11 +155,12 @@ final class MasjidCenterStandaloneTests: XCTestCase {
         let app = launchStandalone()
 
         // Goal = 10 via the chips (not a list box). They live in the
-        // "Tasbih & Objectives" section, closed by default — open it first.
+        // "Objectives" section, closed by default — open it first.
         app.buttons["settingsBtn"].tap()
         XCTAssertTrue(app.buttons["closeSettings"].waitForExistence(timeout: 10))
-        app.buttons["section-Tasbih & Objectives"].tap()
+        app.buttons["section-Objectives"].tap()
         let chip = app.buttons["tasbihTarget-10"]
+        for _ in 0..<8 where !chip.exists { app.swipeUp() }   // chips sit at the section bottom
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "Goal choices must be displayed directly")
         for n in [10, 11, 33, 99, 100, 101] { XCTAssertTrue(app.buttons["tasbihTarget-\(n)"].exists) }
         chip.tap()
@@ -289,6 +290,27 @@ final class MasjidCenterStandaloneTests: XCTestCase {
 
     func testAudioCanBeStoppedFromSettings() throws {
         let app = launchStandalone()
+        // Every iPhone sound is gated by the "iOS notifications" master
+        // switch — a fresh install starts with it OFF, so enable it first
+        // (and accept the system authorization prompt) or the test playback
+        // can't start.
+        addUIInterruptionMonitor(withDescription: "Notifications") { alert -> Bool in
+            for label in ["Allow", "Autoriser"] {
+                if alert.buttons[label].exists { alert.buttons[label].tap(); return true }
+            }
+            return false
+        }
+        app.buttons["settingsBtn"].tap()
+        XCTAssertTrue(app.buttons["closeSettings"].waitForExistence(timeout: 10))
+        let master = app.buttons["notificationsToggle"]
+        if !master.waitForExistence(timeout: 3) {
+            // The master switch lives in the "Notifications" section now.
+            app.buttons["section-Notifications"].tap()
+            for _ in 0..<6 where !master.exists { app.swipeUp() }   // lazy sheet content
+            XCTAssertTrue(master.waitForExistence(timeout: 5), "Notifications must expose the master switch")
+        }
+        master.tap()
+        app.tap()   // nudge the interruption monitor if the prompt is up
         openSettingsSection(app, "Audio control")
         let test = app.buttons["testAthanBtn"]
         XCTAssertTrue(test.waitForExistence(timeout: 5))
@@ -336,6 +358,12 @@ final class MasjidCenterStandaloneTests: XCTestCase {
         XCTAssertTrue(app.buttons["playFullQuranBtn"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["fridayQuranToggle"].exists
                       || app.otherElements["fridayQuranToggle"].exists)
+        // Friday time: ONE native iOS time picker (hour + minute together).
+        let timePicker = app.descendants(matching: .any)["fridayTimePicker"].firstMatch
+        for _ in 0..<4 where !timePicker.exists { app.swipeUp() }
+        XCTAssertTrue(timePicker.exists, "Friday time must be a single native time picker")
+        XCTAssertFalse(app.descendants(matching: .any)["fridayHourPicker"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["fridayMinutePicker"].exists)
         // Bundled athan list must be offered too.
         openSettingsSection(app, "Athan call")
         XCTAssertTrue(app.buttons["audioFilePicker"].waitForExistence(timeout: 5))

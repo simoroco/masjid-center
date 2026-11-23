@@ -1941,6 +1941,13 @@ body.dark-mode a:hover {
     color: #2563EB;
 }
 
+/* Links styled as buttons keep their light text — the generic link hover
+   color would be unreadable on the dark-blue hover background. */
+body.dark-mode a.btn,
+body.dark-mode a.btn:hover {
+    color: #e4e6eb;
+}
+
 body.dark-mode .skip-next-btn {
     background: #dc2626;
     border-color: #dc2626;
