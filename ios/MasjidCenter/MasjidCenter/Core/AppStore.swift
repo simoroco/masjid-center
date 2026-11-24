@@ -51,6 +51,9 @@ final class AppStore: ObservableObject {
     /// Per-type notification sound actually applied ("default" or the file
     /// name in Library/Sounds) — second -notifDebug probe for e2e tests.
     @Published var notifSoundSummary = ""
+    /// Serializes notification-sound builds (several triggers can overlap).
+    var soundRefreshTask: Task<Void, Never>?
+    var soundRefreshAgain = false
     @Published var ramadanDates: Set<String> = []
     @Published var audioFiles: [String] = []
     @Published var quranFiles: [String] = []
@@ -200,6 +203,7 @@ final class AppStore: ObservableObject {
         // "iOS notifications" is the master switch for every sound the app
         // emits on this iPhone (athan, Quran, startup, tests, previews).
         audio.playbackGate = { [weak self] in self?.notificationsEnabled ?? false }
+        _ = NotificationManager.shared   // installs the foreground-presentation delegate
     }
 
     var configured: Bool { !serverBase.isEmpty }

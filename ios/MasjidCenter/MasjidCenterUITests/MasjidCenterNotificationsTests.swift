@@ -273,15 +273,15 @@ final class MasjidCenterNotificationsTests: XCTestCase {
 
         // Athan → configured file (bundled default_athan.mp3 → notif-athan.caf).
         tapSegment(app, "notifSoundAthan", 1)
-        waitSounds(app) { $0.contains("athan=notif-athan.caf") }
+        waitSounds(app) { $0.contains("athan=notif-athan-") }
         waitPending(app) { $0.contains { $0.hasPrefix("athan-") } }
 
         // Quran → configured Friday recitation file → notif-quran.caf.
         tapSegment(app, "notifSoundQuran", 1)
-        waitSounds(app) { $0.contains("quran=notif-quran.caf") }
+        waitSounds(app) { $0.contains("quran=notif-quran-") }
 
         // Athan back to "Notify" — the quran choice is untouched.
         tapSegment(app, "notifSoundAthan", 0)
-        waitSounds(app) { $0.contains("athan=water_drop.wav") && $0.contains("quran=notif-quran.caf") }
+        waitSounds(app) { $0.contains("athan=water_drop.wav") && $0.contains("quran=notif-quran-") }
     }
 }

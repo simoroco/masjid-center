@@ -13,7 +13,7 @@
 		<key>CFBundleIdentifier</key>
 		<string>com.masjidcenter.app</string>
 		<key>CFBundleShortVersionString</key>
-		<string>8.0.0</string>
+		<string>8.1.0</string>
 		<key>CFBundleVersion</key>
 		<string>1</string>
 		<key>SigningIdentity</key>

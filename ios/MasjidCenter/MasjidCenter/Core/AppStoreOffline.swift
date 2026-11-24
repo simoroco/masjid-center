@@ -224,6 +224,7 @@ extension AppStore {
             if !connected {
                 connected = true
                 await resyncFromServer()
+                Task { await refreshNotificationSounds() }
             }
         } else if connected {
             markOffline()
@@ -241,6 +242,11 @@ extension AppStore {
         }
         rescheduleNotifications()
         Task { await refreshNotificationSounds() }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-notifDebug") {
+            Task { await NotificationManager.shared.e2eDumpState("becameActive") }
+        }
+        #endif
     }
 
     /// Cache the next days of prayer times (offline mode + notifications in server mode).
@@ -626,7 +632,7 @@ extension AppStore {
     func rescheduleNotifications() {
         let qt = (settings["friday_quran_time"] ?? "07:00")
             .split(separator: ":").compactMap { Int($0) }
-        let plan = NotificationManager.Plan(
+        var plan = NotificationManager.Plan(
             prayers: local.snap.prayers,
             athanSlotEnabled: { [weak self] p, d in
                 self?.local.iosScheduleEnabled(p, d) ?? true
@@ -654,10 +660,49 @@ extension AppStore {
             quranSoundName: local.snap.iosNotifSoundQuran == "configured" && !local.snap.iosNotifQuranFile.isEmpty
                 ? local.snap.iosNotifQuranFile : "water_drop.wav",
             masterEnabled: local.snap.notificationsEnabled)
+        #if DEBUG
+        applyDebugFire(&plan)
+        #endif
         let requests = NotificationManager.shared.reschedule(plan)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-notifDebug") {
+            NotificationManager.e2eLog("scheduled \(requests.count): " + requests.map {
+                let t = ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents
+                return "\($0.identifier)[\(t?.hour ?? -1):\(t?.minute ?? -1)]"
+            }.prefix(8).joined(separator: " ") + " sounds=\(plan.athanSoundName)|\(plan.reminderSoundName)|\(plan.quranSoundName)")
+            Task { await NotificationManager.shared.e2eDumpState("afterReschedule") }
+        }
+        #endif
         notifDebugSummary = requests.map(\.identifier).sorted().joined(separator: ";")
         notifSoundSummary = "athan=\(plan.athanSoundName.isEmpty ? "default" : plan.athanSoundName);obj=\(plan.reminderSoundName.isEmpty ? "default" : plan.reminderSoundName);quran=\(plan.quranSoundName.isEmpty ? "default" : plan.quranSoundName)"
     }
+
+    #if DEBUG
+    /// E2E hook (Debug builds only): `-notifFireIn <sec> [-notifFireKind athan|objective]`
+    /// injects a slot due at the next full minute after `sec` seconds, so the
+    /// real build path (gates, sounds, triggers) can be observed delivering.
+    private func applyDebugFire(_ plan: inout NotificationManager.Plan) {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-notifFireIn"), i + 1 < args.count, let sec = Double(args[i + 1]) else { return }
+        let kind = args.firstIndex(of: "-notifFireKind").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "athan"
+        let cal = Calendar.current
+        let target = Date().addingTimeInterval(sec)
+        var fire = cal.date(from: cal.dateComponents([.year, .month, .day, .hour, .minute], from: target)) ?? target
+        if fire < target { fire = fire.addingTimeInterval(60) }
+        let (h, m) = (cal.component(.hour, from: fire), cal.component(.minute, from: fire))
+        if kind == "objective" {
+            plan.reminders.append((id: "debug-e2e", name: "E2E objective", times: [(hour: h, minute: m)]))
+            plan.remindersEnabled = true
+            return
+        }
+        let day = DateUtil.dateString(fire), dow = DateUtil.scheduleDay(fire)
+        plan.prayers[day, default: []].append(
+            Prayer(id: nil, date: day, prayer_name: "Fajr | Sobh", prayer_time: String(format: "%02d:%02d", h, m)))
+        let orig = plan.athanSlotEnabled
+        plan.athanSlotEnabled = { p, d in (p == "Fajr | Sobh" && d == dow) || orig(p, d) }
+        plan.athanAlerts = true
+    }
+    #endif
 
     // MARK: iOS notification matrix + per-type switches
 
@@ -730,33 +775,60 @@ extension AppStore {
     /// feature audio (bundle or server download) when needed: sound mode is
     /// "configured" and the source changed or the output file is missing.
     /// Notification sounds must be .aif/.wav/.caf ≤ 30 s — mp3s get
-    /// transcoded by NotificationSoundMaker.
+    /// transcoded by NotificationSoundMaker. Calls are coalesced and run one
+    /// at a time: concurrent builds would delete each other's output file.
     func refreshNotificationSounds() async {
+        soundRefreshAgain = true
+        if let running = soundRefreshTask { await running.value; return }
+        let task = Task { @MainActor [weak self] in
+            while let self, self.soundRefreshAgain {
+                self.soundRefreshAgain = false
+                await self.performNotificationSoundRefresh()
+            }
+            self?.soundRefreshTask = nil
+        }
+        soundRefreshTask = task
+        await task.value
+    }
+
+    private func performNotificationSoundRefresh() async {
         var changed = false
         if local.snap.iosNotifSoundAthan == "configured" {
             let src = settings["audio_file"].flatMap { $0.isEmpty ? nil : $0 } ?? "default_athan.mp3"
             if local.snap.iosNotifAthanFileSrc != src || !NotificationSoundMaker.soundExists(local.snap.iosNotifAthanFile) {
-                if let file = await buildNotificationSound(file: src, quran: false, out: "notif-athan.caf") {
-                    local.snap.iosNotifAthanFile = file
-                    local.snap.iosNotifAthanFileSrc = src
-                } else {
-                    local.snap.iosNotifAthanFile = ""   // resolution failed → iOS alert
-                    local.snap.iosNotifAthanFileSrc = ""
+                var file = ""
+                var resolvedSrc = ""
+                let out = NotificationSoundMaker.fileName(prefix: "notif-athan", source: src)
+                if let f = await buildNotificationSound(file: src, quran: false, out: out) {
+                    file = f; resolvedSrc = src
+                } else if src != "default_athan.mp3" {
+                    // Configured file unreachable (server down…) → the bundled
+                    // athan still beats the generic chime. The source stays
+                    // unresolved so the real file is retried next time.
+                    let fb = NotificationSoundMaker.fileName(prefix: "notif-athan", source: "default_athan.mp3")
+                    if NotificationSoundMaker.soundExists(fb) { file = fb }
+                    else if let f = await buildNotificationSound(file: "default_athan.mp3", quran: false, out: fb) { file = f }
                 }
-                changed = true
+                if file != local.snap.iosNotifAthanFile || resolvedSrc != local.snap.iosNotifAthanFileSrc {
+                    local.snap.iosNotifAthanFile = file
+                    local.snap.iosNotifAthanFileSrc = resolvedSrc
+                    changed = true
+                }
+                NotificationSoundMaker.prune(prefix: "notif-athan", keeping: file)
             }
         }
         if local.snap.iosNotifSoundQuran == "configured" {
             let src = settings["friday_quran_file"].flatMap { $0.isEmpty ? nil : $0 } ?? AC.bundledQurans[0]
             if local.snap.iosNotifQuranFileSrc != src || !NotificationSoundMaker.soundExists(local.snap.iosNotifQuranFile) {
-                if let file = await buildNotificationSound(file: src, quran: true, out: "notif-quran.caf") {
+                let out = NotificationSoundMaker.fileName(prefix: "notif-quran", source: src)
+                let file = await buildNotificationSound(file: src, quran: true, out: out) ?? ""
+                let resolvedSrc = file.isEmpty ? "" : src
+                if file != local.snap.iosNotifQuranFile || resolvedSrc != local.snap.iosNotifQuranFileSrc {
                     local.snap.iosNotifQuranFile = file
-                    local.snap.iosNotifQuranFileSrc = src
-                } else {
-                    local.snap.iosNotifQuranFile = ""
-                    local.snap.iosNotifQuranFileSrc = ""
+                    local.snap.iosNotifQuranFileSrc = resolvedSrc
+                    changed = true
                 }
-                changed = true
+                NotificationSoundMaker.prune(prefix: "notif-quran", keeping: file)
             }
         }
         if changed { local.save(); rescheduleNotifications() }
@@ -773,8 +845,11 @@ extension AppStore {
         }
         guard !isStandalone, connected,
               let url = quran ? api.quranURL(file) : api.athanURL(file),
-              let (tmp, _) = try? await URLSession.shared.download(from: url),
-              await NotificationSoundMaker.make(from: tmp, to: dst) else { return nil }
+              let (tmp, resp) = try? await URLSession.shared.download(from: url),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              await NotificationSoundMaker.make(fromDownload: tmp,
+                                                fileExtension: (file as NSString).pathExtension,
+                                                to: dst) else { return nil }
         return out
     }
 
@@ -782,6 +857,8 @@ extension AppStore {
     func deleteNotificationSounds() {
         NotificationSoundMaker.delete(local.snap.iosNotifAthanFile)
         NotificationSoundMaker.delete(local.snap.iosNotifQuranFile)
+        NotificationSoundMaker.prune(prefix: "notif-athan", keeping: "")
+        NotificationSoundMaker.prune(prefix: "notif-quran", keeping: "")
         local.snap.iosNotifAthanFile = ""; local.snap.iosNotifAthanFileSrc = ""
         local.snap.iosNotifQuranFile = ""; local.snap.iosNotifQuranFileSrc = ""
     }

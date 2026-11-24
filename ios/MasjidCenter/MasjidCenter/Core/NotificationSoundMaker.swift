@@ -30,6 +30,38 @@ enum NotificationSoundMaker {
         try? FileManager.default.removeItem(at: soundsDirectory.appendingPathComponent(name))
     }
 
+    /// Output name derived from the source file: a different source yields a
+    /// different name, so iOS (which caches notification sounds by file name)
+    /// can never keep playing a stale sound after the configuration changes.
+    static func fileName(prefix: String, source: String) -> String {
+        var h: UInt64 = 5381
+        for b in source.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return "\(prefix)-\(String(h, radix: 16)).caf"
+    }
+
+    /// Removes every `<prefix>*.caf` except `keep` (older sources, legacy names).
+    static func prune(prefix: String, keeping keep: String) {
+        let dir = soundsDirectory
+        for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        where f.hasPrefix(prefix) && f.hasSuffix(".caf") && f != keep {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
+        }
+    }
+
+    /// Same as `make`, for a file fresh out of URLSession.download: those land
+    /// as extension-less `CFNetworkDownload_*.tmp`, which AVFoundation cannot
+    /// sniff (no tracks → nothing transcoded). The file is moved to a temp name
+    /// carrying the real extension first, and cleaned up afterwards.
+    static func make(fromDownload tmp: URL, fileExtension ext: String, to destination: URL,
+                     maxSeconds: Double = 29) async -> Bool {
+        let src = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notif-src-\(UUID().uuidString)")
+            .appendingPathExtension(ext.isEmpty ? "mp3" : ext)
+        defer { try? FileManager.default.removeItem(at: src); try? FileManager.default.removeItem(at: tmp) }
+        guard (try? FileManager.default.moveItem(at: tmp, to: src)) != nil else { return false }
+        return await make(from: src, to: destination, maxSeconds: maxSeconds)
+    }
+
     /// Decodes `source` (mp3/m4a/wav/…) and writes a notification-ready .caf
     /// at `destination` (LPCM 16-bit mono 44.1 kHz, at most `maxSeconds`).
     /// Returns true when a non-empty file was produced.

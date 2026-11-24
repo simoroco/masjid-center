@@ -10,6 +10,9 @@ import UserNotifications
 final class NotificationManager: ObservableObject {
     static let shared = NotificationManager()
     private let center = UNUserNotificationCenter.current()
+    private let foregroundDelegate = ForegroundDelegate()
+
+    private init() { center.delegate = foregroundDelegate }
 
     /// Water-drop sound bundled in the app (Settings → Tasbih & Objectives reminders).
     static let reminderSound = UNNotificationSoundName("water_drop.wav")
@@ -49,6 +52,28 @@ final class NotificationManager: ObservableObject {
         /// Injectable clock (tests).
         var now: Date = Date()
     }
+
+    #if DEBUG
+    /// E2E trace (Debug builds only): stdout + Documents/e2e.log, pulled by the device test script.
+    nonisolated static func e2eLog(_ s: String) {
+        let line = "E2E \(ISO8601DateFormatter().string(from: Date())) \(s)\n"
+        print(line, terminator: "")
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("e2e.log")
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+        } else { try? line.write(to: url, atomically: true, encoding: .utf8) }
+    }
+
+    /// Logs the notifications iOS actually delivered (with delivery time) and
+    /// the ones still pending.
+    func e2eDumpState(_ tag: String) async {
+        let delivered = await center.deliveredNotifications()
+        let pending = await center.pendingNotificationRequests()
+        let d = delivered.map { "\($0.request.identifier)@\(ISO8601DateFormatter().string(from: $0.date))" }.joined(separator: ",")
+        Self.e2eLog("\(tag) delivered=[\(d)] pendingCount=\(pending.count)")
+    }
+    #endif
 
     /// Requests authorization. Returns true when granted.
     func requestAuthorization() async -> Bool {
@@ -158,5 +183,20 @@ final class NotificationManager: ObservableObject {
             }
         }
         return requests
+    }
+}
+
+/// Without a delegate iOS drops every notification that fires while the app
+/// is in the foreground. Athan alerts show as a banner only (the app already
+/// plays the athan audio itself); the other types also play their sound.
+private final class ForegroundDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        let opts: UNNotificationPresentationOptions =
+            notification.request.identifier.hasPrefix("athan-") ? [.banner, .list] : [.banner, .list, .sound]
+        #if DEBUG
+        NotificationManager.e2eLog("willPresent id=\(notification.request.identifier) title=\(notification.request.content.title) options=\(opts.rawValue)")
+        #endif
+        return opts
     }
 }
