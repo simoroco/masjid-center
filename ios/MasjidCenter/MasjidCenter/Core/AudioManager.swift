@@ -3,7 +3,7 @@ import AVFoundation
 import Combine
 
 // MARK: - AudioManager — AVPlayer equivalent of the web app's <audio> element.
-// Browser always plays at volume 1.0; the volume settings are server-side only.
+// `volume` (Settings → Notifications) scales every playback made on the iPhone.
 
 @MainActor
 final class AudioManager: ObservableObject {
@@ -26,12 +26,19 @@ final class AudioManager: ObservableObject {
     /// Athan call / Tasbih & Objectives / Quran recitation.
     var playbackGate: (() -> Bool)?
 
+    /// Playback volume 0…1 (relative to the iPhone's own volume); live-applied.
+    var volume: Float = 1.0 {
+        didSet { player?.volume = volume }
+    }
+
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
     }
 
-    /// Play a remote audio URL. `limit30s` trims like the web 30s previews.
-    func play(url: URL, banner: String, limit30s: Bool = false, isPrayer: Bool = false) {
+    /// Play an audio URL (remote or bundled). `limit30s` trims like the web 30s
+    /// previews; `startAt` resumes mid-file (continuing a notification sound).
+    func play(url: URL, banner: String, limit30s: Bool = false, isPrayer: Bool = false,
+              startAt: TimeInterval = 0) {
         guard playbackGate?() ?? true else { return }
         stopLocal()
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -39,7 +46,8 @@ final class AudioManager: ObservableObject {
         playingIsPrayer = isPrayer
         let item = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: item)
-        player?.volume = 1.0
+        player?.volume = volume
+        if startAt > 0 { player?.seek(to: CMTime(seconds: startAt, preferredTimescale: 600)) }
         player?.play()
         isPlaying = true
 

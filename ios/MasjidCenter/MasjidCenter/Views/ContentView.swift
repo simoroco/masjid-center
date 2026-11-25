@@ -165,9 +165,12 @@ struct ContentView: View {
         .onAppear {
             if UserDefaults.standard.bool(forKey: "showTasbih") { showTasbih = true }
             if UserDefaults.standard.bool(forKey: "showSettings") { showSettings = true }
+            if store.pendingTasbih { store.pendingTasbih = false; showTasbih = true }   // reminder tapped at launch
         }
         // Unchecked Tasbih action tile → slide the counter in from the right.
         .onChange(of: store.tasbihOpenTick) { _, _ in
+            store.pendingTasbih = false
+            showSettings = false; showCalendar = false; showPrayerOverview = false; showStats = false
             withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { showTasbih = true }
         }
         .onChange(of: scenePhase) { _, phase in

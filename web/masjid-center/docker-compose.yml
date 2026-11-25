@@ -4,8 +4,9 @@ services:
     platform: linux/arm64
     image: simoroco/masjid-center:latest
     container_name: masjid-center
-    # Network mode: host for Linux, bridge for macOS/Windows
-    network_mode: ${NETWORK_MODE:-bridge}  # Dev defaults to bridge for compatibility
+    # Network mode: bridge on every OS — the iOS app finds the server by
+    # scanning the subnet on :7777. NETWORK_MODE=host stays available on Linux.
+    network_mode: ${NETWORK_MODE:-bridge}
     ports:
       - "7777:7777"
       - "7778:7778"

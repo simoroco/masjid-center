@@ -20,12 +20,34 @@ enum AC {
 
     /// Audio bundled into the app — athan & Quran keep working with no server
     /// at all (standalone) or while the Pi is unreachable (offline).
+    /// Every audio file the server offers (audio/athan + audio/coran) ships in
+    /// the app, so the full recording can play with no server at all.
     static let bundledAthans = [
         "default_athan.mp3",
+        "Intro & Athan & Iqama - Nice An-Nour Institute.mp3",
+        "Athan - Nice An-Nour Institute.mp3",
+        "Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3",
         "Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3",
-        "Athan - Omar Hisham Al Arabi.mp3"
+        "Intro & Athan - Omar Hisham Al Arabi.mp3",
+        "Athan - Omar Hisham Al Arabi.mp3",
+        "Alarm & Athan - Omar Hisham Al Arabi.mp3",
+        "Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3",
+        "Athan - Muadin Hafiz Mustafa Özcan.mp3",
+        "Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3",
+        "Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3"
     ]
-    static let bundledQurans = ["Sourat Al Kahf - Hani Arrifai.mp3"]
+    static let bundledQurans = [
+        "Sourat Al Kahf - Hani Arrifai.mp3",
+        "Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3"
+    ]
+    /// Server file names stored under another bundled name (same bytes — not duplicated).
+    static let bundleAlias = ["Intro & Athan - Nice An-Nour Institute.mp3": "default_athan.mp3"]
+
+    /// URL of a server audio file inside the app bundle, nil when it isn't bundled.
+    static func bundledAudioURL(_ file: String) -> URL? {
+        let f = bundleAlias[file] ?? file
+        return Bundle.main.url(forResource: f.replacingOccurrences(of: ".mp3", with: ""), withExtension: "mp3")
+    }
 
     /// Default time assigned to the Nth newly-added objective reminder
     /// (first free slot is picked, so added reminders stay spread out).

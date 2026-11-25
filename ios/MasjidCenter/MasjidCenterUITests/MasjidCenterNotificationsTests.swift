@@ -285,3 +285,93 @@ final class MasjidCenterNotificationsTests: XCTestCase {
         waitSounds(app) { $0.contains("athan=water_drop.wav") && $0.contains("quran=notif-quran-") }
     }
 }
+
+
+// MARK: - Notification taps + playback volume (simulator; Debug -notifFireIn hook).
+// A slot due within ~2 min is delivered while the app is in the background /
+// terminated; the banner is then tapped from SpringBoard.
+
+extension MasjidCenterNotificationsTests {
+
+    private var springboard: XCUIApplication { XCUIApplication(bundleIdentifier: "com.apple.springboard") }
+
+    /// Fresh standalone install with the master switch ON (and optionally the
+    /// real athan sound), then terminated so the next launch starts clean.
+    private func firstLaunchConfigured(athanSound: Bool) -> XCUIApplication {
+        let app = launchStandalone()
+        enableMaster(app)
+        if athanSound {
+            tapSegment(app, "notifSoundAthan", 1)
+            waitSounds(app) { $0.contains("athan=notif-athan-") }
+        }
+        app.terminate()
+        return app
+    }
+
+    private func relaunch(_ extra: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-notifDebug"] + extra
+        app.launch()
+        XCTAssertTrue(app.buttons["settingsBtn"].waitForExistence(timeout: 15))
+        return app
+    }
+
+    private func tapBanner(_ text: String) {
+        let b = springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
+        XCTAssertTrue(b.waitForExistence(timeout: 150), "banner '\(text)' not delivered")
+        b.tap()
+    }
+
+    func testTasbihReminderTapOpensTasbih_background() throws {
+        _ = firstLaunchConfigured(athanSound: false)
+        let app = relaunch(["-notifFireIn", "40", "-notifFireKind", "tasbih"])
+        XCUIDevice.shared.press(.home)
+        tapBanner("reach your objective")
+        XCTAssertTrue(app.descendants(matching: .any)["tasbihScreen"].firstMatch.waitForExistence(timeout: 10),
+                      "Tasbih view must open on tap (app was backgrounded)")
+    }
+
+    func testTasbihReminderTapOpensTasbih_coldLaunch() throws {
+        _ = firstLaunchConfigured(athanSound: false)
+        let app = relaunch(["-notifFireIn", "40", "-notifFireKind", "tasbih"])
+        sleep(2)
+        app.terminate()
+        tapBanner("reach your objective")
+        let relaunched = XCUIApplication()
+        XCTAssertTrue(relaunched.descendants(matching: .any)["tasbihScreen"].firstMatch.waitForExistence(timeout: 20),
+                      "Tasbih view must open on tap (app was terminated)")
+    }
+
+    func testAthanTapPlaysFullAudioInApp() throws {
+        _ = firstLaunchConfigured(athanSound: true)
+        let app = relaunch(["-notifFireIn", "40", "-notifFireKind", "athan"])
+        XCUIDevice.shared.press(.home)
+        tapBanner("time to pray")
+        let bar = app.descendants(matching: .any)["audioBanner"].firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 15), "athan must start playing in the app after the tap")
+        sleep(35)   // the notification sound is capped at 30 s — playback must go on
+        XCTAssertTrue(bar.exists, "athan playback must not stop at 30 s")
+    }
+
+    func testPlaybackVolumeSlider() throws {
+        _ = firstLaunchConfigured(athanSound: false)   // master ON (slider is master-subordinate)
+        let app = relaunch([])
+        app.buttons["settingsBtn"].tap()
+        let header = app.buttons["section-Notifications"]
+        for _ in 0..<10 where !header.isHittable { app.swipeUp() }
+        header.tap()
+        let slider = app.sliders["playbackVolumeSlider"]
+        for _ in 0..<10 where !slider.exists { app.swipeUp() }
+        XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        XCTAssertEqual(slider.normalizedSliderPosition, 1.0, accuracy: 0.02, "default volume is 100%")
+        for _ in 0..<6 where !(slider.isHittable && slider.frame.midY < 650) { app.swipeUp() }
+        slider.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5))
+            .press(forDuration: 0.2, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        sleep(1)
+        XCTAssertEqual(slider.normalizedSliderPosition, 0.5, accuracy: 0.06)
+        let label = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Playback volume:'")).firstMatch
+        XCTAssertTrue(label.exists, "volume label shown")
+        XCTAssertFalse(label.label.contains("100"), "label follows the slider: \(label.label)")
+    }
+}

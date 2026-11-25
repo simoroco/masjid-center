@@ -156,6 +156,9 @@ final class AppStore: ObservableObject {
     /// A monotonic counter (not a flag): onChange fires on every increment.
     @Published var tasbihOpenTick = 0
     func requestTasbih() { tasbihOpenTick += 1 }
+    /// A Tasbih reminder was tapped before ContentView existed (cold launch):
+    /// ContentView opens the counter as soon as it appears.
+    var pendingTasbih = false
 
     /// City shown in Settings when the server only knows "Unknown": the coords
     /// are embedded in the ICS URL (x=…:y=…) → reverse-geocode them once.
@@ -203,7 +206,9 @@ final class AppStore: ObservableObject {
         // "iOS notifications" is the master switch for every sound the app
         // emits on this iPhone (athan, Quran, startup, tests, previews).
         audio.playbackGate = { [weak self] in self?.notificationsEnabled ?? false }
-        _ = NotificationManager.shared   // installs the foreground-presentation delegate
+        audio.volume = Float(local.snap.iosPlaybackVolume)
+        // Installs the notification delegate; a tap that launched the app is replayed here.
+        NotificationManager.shared.onTap = { [weak self] in self?.handleNotificationTap($0) }
     }
 
     var configured: Bool { !serverBase.isEmpty }
@@ -744,6 +749,8 @@ final class AppStore: ObservableObject {
         local.snap.iosNotifSoundAthan = "default"
         local.snap.iosNotifSoundObjectives = "configured"
         local.snap.iosNotifSoundQuran = "default"
+        local.snap.iosPlaybackVolume = 1.0
+        audio.volume = 1.0
         deleteNotificationSounds()
         local.snap.iosSchedule = []
         if isStandalone {
@@ -810,6 +817,7 @@ final class AppStore: ObservableObject {
         audio.stopLocal()
         deleteNotificationSounds()
         local.reset()
+        audio.volume = 1.0
         if let bid = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bid)
         }

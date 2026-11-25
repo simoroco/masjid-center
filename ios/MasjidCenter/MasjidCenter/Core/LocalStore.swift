@@ -80,6 +80,8 @@ struct LocalSnapshot: Codable {
     /// from is kept so a changed athan/quran file triggers a rebuild.
     var iosNotifAthanFile: String = ""
     var iosNotifAthanFileSrc: String = ""
+    /// In-app playback volume (athan / Quran played on the iPhone), 0…1.
+    var iosPlaybackVolume: Double = 1.0
     var iosNotifQuranFile: String = ""
     var iosNotifQuranFileSrc: String = ""
 
@@ -129,6 +131,7 @@ struct LocalSnapshot: Codable {
         iosNotifSoundQuran = try c.decodeIfPresent(String.self, forKey: .iosNotifSoundQuran) ?? d.iosNotifSoundQuran
         iosNotifAthanFile = try c.decodeIfPresent(String.self, forKey: .iosNotifAthanFile) ?? d.iosNotifAthanFile
         iosNotifAthanFileSrc = try c.decodeIfPresent(String.self, forKey: .iosNotifAthanFileSrc) ?? d.iosNotifAthanFileSrc
+        iosPlaybackVolume = try c.decodeIfPresent(Double.self, forKey: .iosPlaybackVolume) ?? d.iosPlaybackVolume
         iosNotifQuranFile = try c.decodeIfPresent(String.self, forKey: .iosNotifQuranFile) ?? d.iosNotifQuranFile
         iosNotifQuranFileSrc = try c.decodeIfPresent(String.self, forKey: .iosNotifQuranFileSrc) ?? d.iosNotifQuranFileSrc
     }
@@ -323,6 +326,7 @@ final class LocalStore {
         csv += "ios_sound,athan,\(snap.iosNotifSoundAthan)\n"
         csv += "ios_sound,objectives,\(snap.iosNotifSoundObjectives)\n"
         csv += "ios_sound,quran,\(snap.iosNotifSoundQuran)\n"
+        csv += "ios_volume,playback,\(Int((snap.iosPlaybackVolume * 100).rounded()))\n"
         for s in snap.iosSchedule {
             csv += "ios_schedule,\(s.prayer_name)-\(s.day_of_week),\(s.enabled)\n"
         }
@@ -419,6 +423,10 @@ final class LocalStore {
                 case "quran": snap.iosNotifSoundQuran = value
                 default: continue
                 }
+                imported += 1
+            case "ios_volume" where key == "playback":
+                guard let v = Int(value) else { continue }
+                snap.iosPlaybackVolume = Double(max(0, min(100, v))) / 100
                 imported += 1
             case "ios_schedule":   // same "name-dow" key format as prayer_schedule
                 if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]) {

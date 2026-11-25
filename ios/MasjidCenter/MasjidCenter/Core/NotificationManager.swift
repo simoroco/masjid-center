@@ -14,6 +14,59 @@ final class NotificationManager: ObservableObject {
 
     private init() { center.delegate = foregroundDelegate }
 
+    /// Notification Center keeps at most ONE notification per group: every
+    /// athan shares one group, every objective reminder and the Friday
+    /// recitation share the other → never more than 2 shown at once.
+    nonisolated static let athanThread = "athan"
+    nonisolated static let reminderThread = "reminders"
+
+    nonisolated static func group(of n: UNNotification) -> String {
+        n.request.content.threadIdentifier.isEmpty
+            ? (n.request.identifier.hasPrefix("athan-") ? athanThread : reminderThread)
+            : n.request.content.threadIdentifier
+    }
+
+    /// Removes delivered notifications that a newer one of the same group
+    /// supersedes (the newest — or `keeping` — stays). Local notifications are
+    /// delivered by iOS without running any app code, so this runs at every
+    /// opportunity instead: launch, foreground, each reschedule, each
+    /// foreground presentation.
+    func pruneDelivered(keeping id: String? = nil) async {
+        let delivered = await center.deliveredNotifications()
+        var newest: [String: UNNotification] = [:]
+        for n in delivered {
+            let g = Self.group(of: n)
+            if n.request.identifier == id { newest[g] = n; continue }
+            if let cur = newest[g] {
+                if cur.request.identifier == id { continue }
+                if n.date <= cur.date { continue }
+            }
+            newest[g] = n
+        }
+        let stale = delivered.filter { newest[Self.group(of: $0)]?.request.identifier != $0.request.identifier }
+            .map(\.request.identifier)
+        if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
+    }
+
+    /// A tap on a delivered notification (userInfo set in `buildRequests`).
+    struct Tap {
+        let kind: String        // "athan" | "quran" | "objective"
+        let file: String        // audio file to play ("" = chime → just open the app)
+        let id: String          // objective id
+        let delivered: Date     // when iOS delivered it (= when its sound started)
+    }
+
+    /// Set by AppStore. A tap that launches the app arrives before the store
+    /// exists, so it is kept and handed over as soon as the handler is set.
+    var onTap: (@MainActor (Tap) -> Void)? {
+        didSet { if let t = pendingTap, let h = onTap { pendingTap = nil; h(t) } }
+    }
+    private var pendingTap: Tap?
+
+    fileprivate func receive(_ tap: Tap) {
+        if let h = onTap { h(tap) } else { pendingTap = tap }
+    }
+
     /// Water-drop sound bundled in the app (Settings → Tasbih & Objectives reminders).
     static let reminderSound = UNNotificationSoundName("water_drop.wav")
 
@@ -47,6 +100,11 @@ final class NotificationManager: ObservableObject {
         var athanSoundName: String = ""
         var reminderSoundName: String = ""
         var quranSoundName: String = ""
+        /// Audio file (server name) behind the athan / Quran notification
+        /// sound; "" when the chime is used. Tapping the notification plays
+        /// this file in full inside the app.
+        var athanPlayFile: String = ""
+        var quranPlayFile: String = ""
         /// Master switch ("iOS notifications").
         var masterEnabled: Bool = false
         /// Injectable clock (tests).
@@ -114,6 +172,8 @@ final class NotificationManager: ObservableObject {
                     guard seen.insert(t.hour * 60 + t.minute).inserted else { continue }
                     let content = UNMutableNotificationContent()
                     content.title = r.name
+                    content.userInfo = ["kind": "objective", "id": r.id]
+                    content.threadIdentifier = Self.reminderThread
                     content.body = "It's time to reach your objective"
                     content.sound = p.reminderSoundName.isEmpty
                         ? .default : UNNotificationSound(named: UNNotificationSoundName(p.reminderSoundName))
@@ -131,6 +191,8 @@ final class NotificationManager: ObservableObject {
         if let q = p.quranFriday {
             let content = UNMutableNotificationContent()
             content.title = "Al Kahf Sourat"
+            content.userInfo = ["kind": "quran", "file": p.quranPlayFile]
+            content.threadIdentifier = Self.reminderThread
             content.body = "Friday recitation starts now"
             content.sound = p.quranSoundName.isEmpty
                 ? .default : UNNotificationSound(named: UNNotificationSoundName(p.quranSoundName))
@@ -173,6 +235,8 @@ final class NotificationManager: ObservableObject {
             for slot in slots.prefix(max(0, totalBudget - requests.count)) {
                 let content = UNMutableNotificationContent()
                 content.title = AC.displayPrayerName(slot.name)
+                content.userInfo = ["kind": "athan", "file": p.athanPlayFile]
+                content.threadIdentifier = Self.athanThread
                 content.body = "It's time to pray — \(slot.time)"
                 content.sound = p.athanSoundName.isEmpty
                     ? .default : UNNotificationSound(named: UNNotificationSoundName(p.athanSoundName))
@@ -187,16 +251,37 @@ final class NotificationManager: ObservableObject {
 }
 
 /// Without a delegate iOS drops every notification that fires while the app
-/// is in the foreground. Athan alerts show as a banner only (the app already
+/// is in the foreground (and taps on notifications go nowhere). Athan alerts show as a banner only (the app already
 /// plays the athan audio itself); the other types also play their sound.
 private final class ForegroundDelegate: NSObject, UNUserNotificationCenterDelegate {
+    @MainActor
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        await NotificationManager.shared.pruneDelivered(keeping: notification.request.identifier)
         let opts: UNNotificationPresentationOptions =
             notification.request.identifier.hasPrefix("athan-") ? [.banner, .list] : [.banner, .list, .sound]
         #if DEBUG
         NotificationManager.e2eLog("willPresent id=\(notification.request.identifier) title=\(notification.request.content.title) options=\(opts.rawValue)")
         #endif
         return opts
+    }
+
+    /// Must run on the main actor: as a plain async method it executes on a
+    /// background thread and UIKit aborts (assertion in
+    /// _performBlockAfterCATransactionCommitSynchronizes) when it completes.
+    @MainActor
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let n = response.notification
+        let info = n.request.content.userInfo
+        let tap = NotificationManager.Tap(kind: info["kind"] as? String ?? "",
+                                          file: info["file"] as? String ?? "",
+                                          id: info["id"] as? String ?? "",
+                                          delivered: n.date)
+        #if DEBUG
+        NotificationManager.e2eLog("didReceive kind=\(tap.kind) file=\(tap.file) id=\(tap.id)")
+        #endif
+        NotificationManager.shared.receive(tap)
     }
 }

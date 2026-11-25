@@ -1048,7 +1048,26 @@ struct SettingsSheet: View {
                         disabled: !store.notificationsEnabled || !store.iosNotifQuran,
                         id: "notifSoundQuran")
 
-            Text("Pick which notification types this iPhone emits. \"Notify\" plays the water-drop chime; the other choice plays the same sound the feature uses — the configured athan or Friday recitation file (trimmed to 30 s).")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Playback volume: \(Int((store.iosPlaybackVolume * 100).rounded()))%")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+                HStack(spacing: 10) {
+                    Image(systemName: "speaker.fill")
+                    Slider(value: Binding(get: { store.iosPlaybackVolume },
+                                          set: { store.iosPlaybackVolume = $0 }),
+                           in: 0...1, step: 0.01)
+                        .tint(Color(hex: 0x2A6DD1))
+                        .accessibilityIdentifier("playbackVolumeSlider")
+                    Image(systemName: "speaker.wave.3.fill")
+                }
+                .foregroundStyle(theme.helpText)
+                Text("Volume of the athan and Quran recitation played by the app on this iPhone (relative to the iPhone's volume). Notification sounds follow the iPhone's own volume.")
+                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
+            }
+            .disabled(!store.notificationsEnabled)
+            .opacity(store.notificationsEnabled ? 1 : 0.5)
+
+            Text("Pick which notification types this iPhone emits. \"Notify\" plays the water-drop chime; the other choice plays the same sound the feature uses — the configured athan or Friday recitation file (the notification sound lasts 30 s at most). Tap the notification to continue the full recording in the app. A Tasbih reminder opens the Tasbih counter.")
                 .font(.system(size: 13)).foregroundStyle(theme.helpText)
         }
     }

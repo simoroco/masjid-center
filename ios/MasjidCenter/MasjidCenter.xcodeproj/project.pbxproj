@@ -8,15 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		075FD5A184EA8BC39BCD6206 /* MasjidCenterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04894028D6D422B8CD53C75 /* MasjidCenterApp.swift */; };
+		0A4188FAF9AC0CACF540CD60 /* Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 722FA530B19ED5A6361742E4 /* Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3 */; };
 		0CB53A9EECD093DF571891ED /* ServerDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A494DC81457BD3633B90AD0 /* ServerDiscovery.swift */; };
+		0F4FBA6EC37DC8200F029D0C /* Athan - Muadin Hafiz Mustafa Özcan.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 0BB8C8FF12B8F666F9983DAD /* Athan - Muadin Hafiz Mustafa Özcan.mp3 */; };
 		102C80D5CF6BE92439820C21 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2850E363CF0D0A38A56F85B7 /* ContentView.swift */; };
 		1A929B68363FCB79325BB932 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FF4C45B66814614EBD4644 /* Models.swift */; };
 		1EAD9B7B6A6F6AB916197D2F /* MasjidCenterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05696B20A676480CE63333A0 /* MasjidCenterUITests.swift */; };
+		2B69CE0286F5319EAD522115 /* Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 396649E39459ADA95C68EBB9 /* Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */; };
 		3170FDB189803F190AB31932 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD2DE2B4C5CFC377D4B458B /* APIClient.swift */; };
+		31945DA0A2BE03C8FFE7766B /* Alarm & Athan - Omar Hisham Al Arabi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 7673990AFC243192F29847F6 /* Alarm & Athan - Omar Hisham Al Arabi.mp3 */; };
+		3841F16F3EE2EE4ADA6C44F2 /* Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = C5E3AA58A56089981EC65B87 /* Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 */; };
 		4E855A05A99DCF3032CD3476 /* default_athan.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 15E7DEB56A7D5614836DCD39 /* default_athan.mp3 */; };
 		55B5800D5FA6F895727B7818 /* Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A4D5FA34B56E3F6515ABA532 /* Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 */; };
 		591668E669DBDC53FBFE9195 /* ActionEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22364B985E3790257C59C7F /* ActionEditSheet.swift */; };
+		5E32CADE6DAF3C6E8B476E6B /* Intro & Athan & Iqama - Nice An-Nour Institute.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = C0A1A5076B9E4081F9B3EABE /* Intro & Athan & Iqama - Nice An-Nour Institute.mp3 */; };
 		6007EBA76ED4E9E08317E473 /* PrayerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1DB94B8C1C9769498517EC /* PrayerListView.swift */; };
+		60FCBD1863F60B773BCFCA0E /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 62EC7769D6C16C280F9239B5 /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */; };
+		672B685BFA6D798F2E052B83 /* Athan - Nice An-Nour Institute.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = C5320912DF75DC3380D069EB /* Athan - Nice An-Nour Institute.mp3 */; };
 		70BA62F0C16331B41F5BA113 /* Athan - Omar Hisham Al Arabi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 7303312B11FE2AC405A695BA /* Athan - Omar Hisham Al Arabi.mp3 */; };
 		74B9C32B4D0F7067DDF63F81 /* CalendarSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2761541D120274DFBE82E084 /* CalendarSheet.swift */; };
 		75902C50EBA565C2F6CD93FF /* MasjidCenterNotificationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 384C7756456A5AD847C30283 /* MasjidCenterNotificationsTests.swift */; };
@@ -36,9 +44,11 @@
 		BAFAEF9CFD3EC3FA9267A396 /* AppStoreOffline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58724CC21DF638DA5C4A16C3 /* AppStoreOffline.swift */; };
 		C876D7BB7D2D8C158A0A1EBB /* StatisticsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB74538A2516F9DEF15CC6FE /* StatisticsSheet.swift */; };
 		CE7101FE8A92A9187AF9323F /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F953B7D38065B366BC5069D5 /* AppStore.swift */; };
+		D4A96613BD83D00B9207B4D7 /* Intro & Athan - Omar Hisham Al Arabi.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = CB5655023BE09B7034789B59 /* Intro & Athan - Omar Hisham Al Arabi.mp3 */; };
 		D641AAB0D9844616358D0207 /* ServerSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E147E0A4611FFFE34FC1F6 /* ServerSetupView.swift */; };
 		DDC81990CDB74A438D05F8E2 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D721142CBB3A5C58AC45B031 /* AudioManager.swift */; };
 		E46DF2559A3BB93879942D86 /* ScheduleMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12100506847D98AD4FDA7DD4 /* ScheduleMatrixView.swift */; };
+		EA21C0553D72E622EA6C5ED0 /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = BF6DFFE30F95C961379B5D4E /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 */; };
 		F1C97F9A6F983B2BD638A6CC /* FloatingBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D827C56224DDF3E16B98A7 /* FloatingBars.swift */; };
 		F50303FB00F1504550C25E43 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A501E4E8978415E21A04C091 /* NotificationManager.swift */; };
 		FBEA022F3A3E1E22F0327967 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F130217C1FBA21077652FC82 /* Assets.xcassets */; };
@@ -56,6 +66,7 @@
 
 /* Begin PBXFileReference section */
 		05696B20A676480CE63333A0 /* MasjidCenterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasjidCenterUITests.swift; sourceTree = "<group>"; };
+		0BB8C8FF12B8F666F9983DAD /* Athan - Muadin Hafiz Mustafa Özcan.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Muadin Hafiz Mustafa Özcan.mp3"; sourceTree = "<group>"; };
 		12100506847D98AD4FDA7DD4 /* ScheduleMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleMatrixView.swift; sourceTree = "<group>"; };
 		15E7DEB56A7D5614836DCD39 /* default_athan.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = default_athan.mp3; sourceTree = "<group>"; };
 		1DEDFB494782F44E78FC114D /* TasbihView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasbihView.swift; sourceTree = "<group>"; };
@@ -67,19 +78,23 @@
 		34125AB13FD79AA8AE77A099 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
 		37FF4C45B66814614EBD4644 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		384C7756456A5AD847C30283 /* MasjidCenterNotificationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasjidCenterNotificationsTests.swift; sourceTree = "<group>"; };
+		396649E39459ADA95C68EBB9 /* Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3"; sourceTree = "<group>"; };
 		3A494DC81457BD3633B90AD0 /* ServerDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDiscovery.swift; sourceTree = "<group>"; };
 		3AA08BE3162EDBA5DB00FEB2 /* MasjidCenterUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MasjidCenterUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A422062EBDEDEF3FE916DE2 /* NextPrayerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextPrayerCard.swift; sourceTree = "<group>"; };
 		4BAE3A708B9A9506BEA01DCC /* SettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheet.swift; sourceTree = "<group>"; };
 		52F28B5F9778EB67D5D181A6 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		58724CC21DF638DA5C4A16C3 /* AppStoreOffline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreOffline.swift; sourceTree = "<group>"; };
+		62EC7769D6C16C280F9239B5 /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3"; sourceTree = "<group>"; };
 		684CD90D5257CC473FF9DF2A /* PrayerOverviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerOverviewSheet.swift; sourceTree = "<group>"; };
 		6C61D1A3DB2236788DC5B1C2 /* NotificationSoundMaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSoundMaker.swift; sourceTree = "<group>"; };
 		6DD2DE2B4C5CFC377D4B458B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		71E147E0A4611FFFE34FC1F6 /* ServerSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSetupView.swift; sourceTree = "<group>"; };
+		722FA530B19ED5A6361742E4 /* Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3"; sourceTree = "<group>"; };
 		7303312B11FE2AC405A695BA /* Athan - Omar Hisham Al Arabi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Omar Hisham Al Arabi.mp3"; sourceTree = "<group>"; };
 		73B513A02D9456D3DA307CAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		751642CD5C84227E87AC015B /* MasjidCenter.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MasjidCenter.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7673990AFC243192F29847F6 /* Alarm & Athan - Omar Hisham Al Arabi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Alarm & Athan - Omar Hisham Al Arabi.mp3"; sourceTree = "<group>"; };
 		7D68A0ADD9C5C8A191438AD0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		7E70ED155E100399A7FF0644 /* MasjidCenterStandaloneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasjidCenterStandaloneTests.swift; sourceTree = "<group>"; };
 		8C1DB94B8C1C9769498517EC /* PrayerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerListView.swift; sourceTree = "<group>"; };
@@ -87,7 +102,12 @@
 		A501E4E8978415E21A04C091 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		B40D79547DFE5AAB38DA3B36 /* Sourat Al Kahf - Hani Arrifai.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Sourat Al Kahf - Hani Arrifai.mp3"; sourceTree = "<group>"; };
 		BCE500B8555BFD232100AEE7 /* ICSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICSClient.swift; sourceTree = "<group>"; };
+		BF6DFFE30F95C961379B5D4E /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3"; sourceTree = "<group>"; };
 		C04894028D6D422B8CD53C75 /* MasjidCenterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasjidCenterApp.swift; sourceTree = "<group>"; };
+		C0A1A5076B9E4081F9B3EABE /* Intro & Athan & Iqama - Nice An-Nour Institute.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Intro & Athan & Iqama - Nice An-Nour Institute.mp3"; sourceTree = "<group>"; };
+		C5320912DF75DC3380D069EB /* Athan - Nice An-Nour Institute.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Nice An-Nour Institute.mp3"; sourceTree = "<group>"; };
+		C5E3AA58A56089981EC65B87 /* Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3"; sourceTree = "<group>"; };
+		CB5655023BE09B7034789B59 /* Intro & Athan - Omar Hisham Al Arabi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Intro & Athan - Omar Hisham Al Arabi.mp3"; sourceTree = "<group>"; };
 		D721142CBB3A5C58AC45B031 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		E22364B985E3790257C59C7F /* ActionEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionEditSheet.swift; sourceTree = "<group>"; };
 		F130217C1FBA21077652FC82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -157,13 +177,23 @@
 		E56D51C2F28E91A0686FF0B3 /* MasjidCenter */ = {
 			isa = PBXGroup;
 			children = (
+				7673990AFC243192F29847F6 /* Alarm & Athan - Omar Hisham Al Arabi.mp3 */,
 				F130217C1FBA21077652FC82 /* Assets.xcassets */,
 				A4D5FA34B56E3F6515ABA532 /* Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 */,
+				0BB8C8FF12B8F666F9983DAD /* Athan - Muadin Hafiz Mustafa Özcan.mp3 */,
+				62EC7769D6C16C280F9239B5 /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */,
+				C5320912DF75DC3380D069EB /* Athan - Nice An-Nour Institute.mp3 */,
 				7303312B11FE2AC405A695BA /* Athan - Omar Hisham Al Arabi.mp3 */,
 				15E7DEB56A7D5614836DCD39 /* default_athan.mp3 */,
 				73B513A02D9456D3DA307CAA /* Info.plist */,
+				C5E3AA58A56089981EC65B87 /* Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 */,
+				BF6DFFE30F95C961379B5D4E /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 */,
+				396649E39459ADA95C68EBB9 /* Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */,
+				CB5655023BE09B7034789B59 /* Intro & Athan - Omar Hisham Al Arabi.mp3 */,
+				C0A1A5076B9E4081F9B3EABE /* Intro & Athan & Iqama - Nice An-Nour Institute.mp3 */,
 				C04894028D6D422B8CD53C75 /* MasjidCenterApp.swift */,
 				B40D79547DFE5AAB38DA3B36 /* Sourat Al Kahf - Hani Arrifai.mp3 */,
+				722FA530B19ED5A6361742E4 /* Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3 */,
 				1F99B7D155819FFA571A435E /* water_drop.wav */,
 				B5FFE7E489944EAA3A7D0F58 /* Core */,
 				BA08288414603A5BDC36C2A8 /* Views */,
@@ -262,9 +292,19 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				31945DA0A2BE03C8FFE7766B /* Alarm & Athan - Omar Hisham Al Arabi.mp3 in Resources */,
 				FBEA022F3A3E1E22F0327967 /* Assets.xcassets in Resources */,
 				55B5800D5FA6F895727B7818 /* Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 in Resources */,
+				0F4FBA6EC37DC8200F029D0C /* Athan - Muadin Hafiz Mustafa Özcan.mp3 in Resources */,
+				60FCBD1863F60B773BCFCA0E /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 in Resources */,
+				672B685BFA6D798F2E052B83 /* Athan - Nice An-Nour Institute.mp3 in Resources */,
 				70BA62F0C16331B41F5BA113 /* Athan - Omar Hisham Al Arabi.mp3 in Resources */,
+				5E32CADE6DAF3C6E8B476E6B /* Intro & Athan & Iqama - Nice An-Nour Institute.mp3 in Resources */,
+				3841F16F3EE2EE4ADA6C44F2 /* Intro & Athan - Ali Ahmed Mullah - Masjid Al-Haram.mp3 in Resources */,
+				EA21C0553D72E622EA6C5ED0 /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 in Resources */,
+				2B69CE0286F5319EAD522115 /* Intro & Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 in Resources */,
+				D4A96613BD83D00B9207B4D7 /* Intro & Athan - Omar Hisham Al Arabi.mp3 in Resources */,
+				0A4188FAF9AC0CACF540CD60 /* Sourat Al Kahf (Be Heaven) - Omar Hisham Al Arabi.mp3 in Resources */,
 				87F0AB69BAEBB27DB228FD2A /* Sourat Al Kahf - Hani Arrifai.mp3 in Resources */,
 				4E855A05A99DCF3032CD3476 /* default_athan.mp3 in Resources */,
 				944EA193C270B395DD1E8C55 /* water_drop.wav in Resources */,

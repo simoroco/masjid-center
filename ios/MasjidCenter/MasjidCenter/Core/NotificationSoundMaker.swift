@@ -11,6 +11,9 @@ import AVFoundation
 
 enum NotificationSoundMaker {
 
+    /// iOS plays a notification sound for 30 s at most — the .caf is cut at 29 s.
+    static let maxSeconds: Double = 29
+
     /// Library/Sounds — the only writable location the notification center
     /// searches for custom sounds.
     static var soundsDirectory: URL {
@@ -53,7 +56,7 @@ enum NotificationSoundMaker {
     /// sniff (no tracks → nothing transcoded). The file is moved to a temp name
     /// carrying the real extension first, and cleaned up afterwards.
     static func make(fromDownload tmp: URL, fileExtension ext: String, to destination: URL,
-                     maxSeconds: Double = 29) async -> Bool {
+                     maxSeconds: Double = NotificationSoundMaker.maxSeconds) async -> Bool {
         let src = FileManager.default.temporaryDirectory
             .appendingPathComponent("notif-src-\(UUID().uuidString)")
             .appendingPathExtension(ext.isEmpty ? "mp3" : ext)
@@ -65,7 +68,7 @@ enum NotificationSoundMaker {
     /// Decodes `source` (mp3/m4a/wav/…) and writes a notification-ready .caf
     /// at `destination` (LPCM 16-bit mono 44.1 kHz, at most `maxSeconds`).
     /// Returns true when a non-empty file was produced.
-    static func make(from source: URL, to destination: URL, maxSeconds: Double = 29) async -> Bool {
+    static func make(from source: URL, to destination: URL, maxSeconds: Double = NotificationSoundMaker.maxSeconds) async -> Bool {
         await Task.detached(priority: .utility) {
             try? FileManager.default.removeItem(at: destination)
             let asset = AVURLAsset(url: source)

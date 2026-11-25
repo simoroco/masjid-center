@@ -335,10 +335,9 @@ extension AppStore {
 
     /// Plays the bundled athan (standalone) — same UX as server playback.
     func playLocalAthan() {
-        if let file = settings["audio_file"],
-           let url = Bundle.main.url(forResource: file.replacingOccurrences(of: ".mp3", with: ""), withExtension: "mp3") {
+        if let file = settings["audio_file"], let url = AC.bundledAudioURL(file) {
             audio.play(url: url, banner: "Athan calling...", isPrayer: true)
-        } else if let url = Bundle.main.url(forResource: "default_athan", withExtension: "mp3") {
+        } else if let url = AC.bundledAudioURL("default_athan.mp3") {
             audio.play(url: url, banner: "Athan calling...", isPrayer: true)
         }
     }
@@ -352,9 +351,7 @@ extension AppStore {
     /// Plays the bundled Quran recitation — full local playback, no server.
     func playLocalQuran() {
         let file = settings["friday_quran_file"] ?? AC.bundledQurans[0]
-        let name = file.replacingOccurrences(of: ".mp3", with: "")
-        let url = Bundle.main.url(forResource: name, withExtension: "mp3")
-            ?? Bundle.main.url(forResource: AC.bundledQurans[0].replacingOccurrences(of: ".mp3", with: ""), withExtension: "mp3")
+        let url = AC.bundledAudioURL(file) ?? AC.bundledAudioURL(AC.bundledQurans[0])
         guard let url else { showToast("Quran audio is not bundled"); return }
         audio.play(url: url, banner: "Al Kahf Sourat recitation playing")
     }
@@ -659,18 +656,37 @@ extension AppStore {
             reminderSoundName: "water_drop.wav",
             quranSoundName: local.snap.iosNotifSoundQuran == "configured" && !local.snap.iosNotifQuranFile.isEmpty
                 ? local.snap.iosNotifQuranFile : "water_drop.wav",
+            // Tap target: the real file behind the notification sound (the
+            // bundled athan stands in when the configured one couldn't be built).
+            athanPlayFile: local.snap.iosNotifSoundAthan == "configured" && !local.snap.iosNotifAthanFile.isEmpty
+                ? (local.snap.iosNotifAthanFileSrc.isEmpty ? "default_athan.mp3" : local.snap.iosNotifAthanFileSrc) : "",
+            quranPlayFile: local.snap.iosNotifSoundQuran == "configured" && !local.snap.iosNotifQuranFile.isEmpty
+                ? local.snap.iosNotifQuranFileSrc : "",
             masterEnabled: local.snap.notificationsEnabled)
         #if DEBUG
         applyDebugFire(&plan)
         #endif
         let requests = NotificationManager.shared.reschedule(plan)
         #if DEBUG
+        let traced = ProcessInfo.processInfo.arguments.contains("-notifDebug")
+        #else
+        let traced = false
+        #endif
+        Task {   // keep only the latest delivered notification per group
+            #if DEBUG
+            if traced { await NotificationManager.shared.e2eDumpState("beforePrune") }
+            #endif
+            await NotificationManager.shared.pruneDelivered()
+            #if DEBUG
+            if traced { await NotificationManager.shared.e2eDumpState("afterPrune") }
+            #endif
+        }
+        #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-notifDebug") {
             NotificationManager.e2eLog("scheduled \(requests.count): " + requests.map {
                 let t = ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents
                 return "\($0.identifier)[\(t?.hour ?? -1):\(t?.minute ?? -1)]"
             }.prefix(8).joined(separator: " ") + " sounds=\(plan.athanSoundName)|\(plan.reminderSoundName)|\(plan.quranSoundName)")
-            Task { await NotificationManager.shared.e2eDumpState("afterReschedule") }
         }
         #endif
         notifDebugSummary = requests.map(\.identifier).sorted().joined(separator: ";")
@@ -678,7 +694,7 @@ extension AppStore {
     }
 
     #if DEBUG
-    /// E2E hook (Debug builds only): `-notifFireIn <sec> [-notifFireKind athan|objective]`
+    /// E2E hook (Debug builds only): `-notifFireIn <sec> [-notifFireKind athan,objective,tasbih]` (comma list)
     /// injects a slot due at the next full minute after `sec` seconds, so the
     /// real build path (gates, sounds, triggers) can be observed delivering.
     private func applyDebugFire(_ plan: inout NotificationManager.Plan) {
@@ -690,11 +706,13 @@ extension AppStore {
         var fire = cal.date(from: cal.dateComponents([.year, .month, .day, .hour, .minute], from: target)) ?? target
         if fire < target { fire = fire.addingTimeInterval(60) }
         let (h, m) = (cal.component(.hour, from: fire), cal.component(.minute, from: fire))
-        if kind == "objective" {
-            plan.reminders.append((id: "debug-e2e", name: "E2E objective", times: [(hour: h, minute: m)]))
+        let kinds = kind.split(separator: ",").map(String.init)
+        for k in kinds where k == "objective" || k == "tasbih" {
+            plan.reminders.append((id: k == "tasbih" ? "Tasbih" : "debug-e2e",
+                                   name: k == "tasbih" ? "Tasbih" : "E2E objective", times: [(hour: h, minute: m)]))
             plan.remindersEnabled = true
-            return
         }
+        guard kinds.contains("athan") else { return }
         let day = DateUtil.dateString(fire), dow = DateUtil.scheduleDay(fire)
         plan.prayers[day, default: []].append(
             Prayer(id: nil, date: day, prayer_name: "Fajr | Sobh", prayer_time: String(format: "%02d:%02d", h, m)))
@@ -703,6 +721,44 @@ extension AppStore {
         plan.athanAlerts = true
     }
     #endif
+
+    // MARK: Notification taps + in-app playback volume
+
+    /// Athan / Quran notification with the real sound → plays the full file
+    /// in the app, continuing from where the notification sound had got to
+    /// (it lasts at most `maxSeconds`). Tasbih reminder → opens the counter.
+    func handleNotificationTap(_ tap: NotificationManager.Tap) {
+        #if DEBUG
+        NotificationManager.e2eLog("tap handled kind=\(tap.kind) file=\(tap.file) id=\(tap.id) elapsed=\(Int(Date().timeIntervalSince(tap.delivered)))s")
+        #endif
+        switch tap.kind {
+        case "objective":
+            if tap.id == "Tasbih" { pendingTasbih = true; tasbihOpenTick += 1 }
+        case "athan", "quran":
+            guard !tap.file.isEmpty, notificationsEnabled, !audio.isPlaying else { return }
+            let isAthan = tap.kind == "athan"
+            let elapsed = Date().timeIntervalSince(tap.delivered)
+            let start = elapsed > 0 && elapsed < NotificationSoundMaker.maxSeconds ? elapsed : 0
+            guard let url = AC.bundledAudioURL(tap.file)
+                    ?? (connected ? (isAthan ? api.athanURL(tap.file) : api.quranURL(tap.file)) : nil) else {
+                showToast("Audio file not available"); return
+            }
+            audio.play(url: url, banner: isAthan ? "Athan calling..." : "Al Kahf Sourat recitation playing",
+                       isPrayer: isAthan, startAt: start)
+        default: break
+        }
+    }
+
+    /// Volume of everything played on the iPhone (0…1), live-applied.
+    var iosPlaybackVolume: Double {
+        get { local.snap.iosPlaybackVolume }
+        set {
+            local.snap.iosPlaybackVolume = newValue
+            audio.volume = Float(newValue)
+            local.save()
+            objectWillChange.send()
+        }
+    }
 
     // MARK: iOS notification matrix + per-type switches
 
@@ -838,8 +894,7 @@ extension AppStore {
     /// Bundled files transcode locally; server-only files are downloaded first.
     private func buildNotificationSound(file: String, quran: Bool, out: String) async -> String? {
         let dst = NotificationSoundMaker.soundsDirectory.appendingPathComponent(out)
-        let name = file.replacingOccurrences(of: ".mp3", with: "")
-        if let u = Bundle.main.url(forResource: name, withExtension: "mp3"),
+        if let u = AC.bundledAudioURL(file),
            await NotificationSoundMaker.make(from: u, to: dst) {
             return out
         }

@@ -6,6 +6,10 @@ struct MasjidCenterApp: App {
     @StateObject private var store = AppStore()
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The notification delegate must exist before launch ends, or the tap that
+    /// launched the app is never delivered.
+    init() { _ = NotificationManager.shared }
+
     var body: some Scene {
         WindowGroup {
             // The setup/main swap MUST live in a real View: reads inside a
