@@ -18,7 +18,7 @@ final class MasjidCenterNotificationsTests: XCTestCase {
     /// Fresh install → full standalone setup → home screen, -notifDebug on.
     private func launchStandalone(city: String = "Paris") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-resetLocal", "-notifDebug"]
+        app.launchArguments = ["-resetLocal", "-notifDebug", "-noAutoLocate"]
         app.launch()
         XCTAssertTrue(app.buttons["useLocationButton"].waitForExistence(timeout: 10), "Setup screen expected")
         let field = app.textFields["setupField"]
@@ -38,12 +38,13 @@ final class MasjidCenterNotificationsTests: XCTestCase {
     private func scrollToButton(_ app: XCUIApplication, _ id: String, maxSwipes: Int = 10) -> XCUIElement {
         let el = app.buttons[id]
         for _ in 0..<(maxSwipes * 2) {
-            if el.isHittable { return el }
+            // isHittable alone is unreliable: a row clipped by the nav bar can
+            // report hittable=true at y≈48 and the tap lands on the bar.
             guard app.buttons["closeSettings"].exists else { return el }
             if el.exists {
                 let f = el.frame
-                if f.minY > 105 && f.maxY < 770 { return el }   // fully in view
-                f.midY < 400 ? app.swipeDown() : app.swipeUp()
+                if el.isHittable && f.minY > 105 && f.maxY < 770 { return el }
+                f.midY < 440 ? app.swipeDown() : app.swipeUp()
             } else {
                 app.swipeUp()
             }
@@ -73,8 +74,15 @@ final class MasjidCenterNotificationsTests: XCTestCase {
     /// SwiftUI propagates the row identifier onto the inner WebToggle button,
     /// so `app.buttons[id]` is the precise match.
     private func tapToggle(_ app: XCUIApplication, _ id: String, file: StaticString = #file, line: UInt = #line) {
-        let el = scrollToButton(app, id)
-        XCTAssertTrue(el.waitForExistence(timeout: 3), "missing \(id)", file: file, line: line)
+        // An element deep in the accordion can report a plausible frame while
+        // still clipped by the sheet — wait for a real hittable state so the
+        // tap actually reaches the control.
+        var el = scrollToButton(app, id)
+        for _ in 0..<10 where !el.isHittable {
+            sleep(1)
+            el = scrollToButton(app, id)
+        }
+        XCTAssertTrue(el.isHittable, "not tappable \(id)", file: file, line: line)
         el.tap()
     }
 
@@ -140,10 +148,21 @@ final class MasjidCenterNotificationsTests: XCTestCase {
                       file: file, line: line)
     }
 
-    /// Opens the "Notifications" settings section (all iOS notification
-    /// options are grouped there since the dedicated section was added).
+    /// Opens the "Audio control" settings section — the "App notifications"
+    /// master switch lives in its "In app" group (notification types are
+    /// distributed into their own feature sections).
     private func openNotifications(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
-        ensureSection(app, "Notifications", probe: "notificationsToggle", file: file, line: line)
+        ensureSection(app, "Audio control", probe: "notificationsToggle", file: file, line: line)
+    }
+
+    private func openAthanCall(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
+        ensureSection(app, "Athan call", probe: "notifAthanToggle", file: file, line: line)
+    }
+    private func openObjectives(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
+        ensureSection(app, "Objectives", probe: "notifObjectivesToggle", file: file, line: line)
+    }
+    private func openQuran(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
+        ensureSection(app, "Quran recitation", probe: "notifQuranToggle", file: file, line: line)
     }
 
     /// Turns the master "iOS notifications" switch ON, accepting the system
@@ -168,12 +187,17 @@ final class MasjidCenterNotificationsTests: XCTestCase {
 
     func testPerTypeSwitches() throws {
         let app = launchStandalone()
-        openNotifications(app)
-        // Master off: nothing pending, sub-switches disabled.
+        openAthanCall(app)
+        // Master off: nothing pending, but the "In app" controls stay usable
+        // and a hint explains why no alert is sent.
         waitPending(app) { $0.isEmpty }
-        XCTAssertFalse(toggleEnabled(app, "notifAthanToggle"), "sub-switch must be disabled while master is off")
+        XCTAssertTrue(toggleEnabled(app, "notifAthanToggle"), "In app switch must stay usable while master is off")
+        XCTAssertTrue(toggleEnabled(app, "iossched-week-Dohr"), "In app matrix must stay usable while master is off")
+        XCTAssertTrue(app.descendants(matching: .any)["masterOffHint"].firstMatch.waitForExistence(timeout: 3),
+                      "master-off hint must be shown")
 
         enableMaster(app)
+        openAthanCall(app)
 
         // Athan alerts OFF → athan ids disappear; the switch is type-scoped.
         tapToggle(app, "notifAthanToggle")
@@ -192,15 +216,40 @@ final class MasjidCenterNotificationsTests: XCTestCase {
         waitPending(app) { $0.contains { $0.hasPrefix("objrem-") } && $0.contains { $0.hasPrefix("athan-") } }
 
         // Objective reminders OFF → objrem gone, athan alerts kept.
-        openNotifications(app)
+        openObjectives(app)
         tapToggle(app, "notifObjectivesToggle")
         waitPending(app) {
             !$0.contains { $0.hasPrefix("objrem-") } && $0.contains { $0.hasPrefix("athan-") }
         }
 
         // Master OFF → everything cleared.
+        openNotifications(app)
         tapToggle(app, "notificationsToggle")
         waitPending(app) { $0.isEmpty }
+    }
+
+    // MARK: 1b — standalone: server controls greyed, athan matrix kept as "Playback"
+
+    func testStandaloneGreysServerOptions() throws {
+        let app = launchStandalone()
+        ensureSection(app, "Quran recitation", probe: "playLocalQuranBtn")
+        XCTAssertTrue(app.buttons["playLocalQuranBtn"].exists || scrollToButton(app, "playLocalQuranBtn").exists,
+                      "in-app Quran button must exist")
+        XCTAssertFalse(toggleEnabled(app, "playFullQuranBtn"), "server Quran button must be greyed in standalone")
+        XCTAssertFalse(toggleEnabled(app, "fridayQuranToggle"), "Friday toggle (server) must be greyed in standalone")
+        XCTAssertTrue(toggleEnabled(app, "playLocalQuranBtn"), "the in-app Quran button must stay usable")
+        // …and it really plays, even though "App notifications" is off.
+        scrollToButton(app, "playLocalQuranBtn").tap()
+        XCTAssertTrue(app.descendants(matching: .any)["audioBannerSheet"].firstMatch.waitForExistence(timeout: 8),
+                      "in-app Quran playback must start with master off")
+        app.buttons["stopAudioBannerSheet"].tap()
+
+        // Athan: the matrix drives local playback → group renamed "Playback", matrix usable.
+        ensureSection(app, "Athan call", probe: "audioFilePicker")
+        XCTAssertTrue(app.staticTexts["PLAYBACK"].waitForExistence(timeout: 3) || { for _ in 0..<8 where !app.staticTexts["PLAYBACK"].exists { app.swipeUp() }; return app.staticTexts["PLAYBACK"].exists }(),
+                      "standalone athan matrix group must be named Playback")
+        XCTAssertFalse(app.staticTexts["SERVER CONFIG"].exists, "no 'Server config' group in standalone")
+        XCTAssertTrue(toggleEnabled(app, "sched-week-Dohr"), "local playback matrix must stay usable")
     }
 
     // MARK: 2 — iOS notification matrix is independent from the athan schedule
@@ -216,9 +265,8 @@ final class MasjidCenterNotificationsTests: XCTestCase {
         sleep(1)   // let the async reschedule land before asserting
         waitPending(app) { $0.contains { $0.hasSuffix("-Dohr") } }
 
-        // iOS matrix (in the "Notifications" section): turn Dohr OFF → its
+        // iOS matrix (same section, "In app" group): turn Dohr OFF → its
         // alert disappears, others stay.
-        openNotifications(app)
         tapToggle(app, "iossched-week-Dohr")
         waitPending(app) {
             !$0.contains { $0.hasSuffix("-Dohr") }
@@ -235,7 +283,7 @@ final class MasjidCenterNotificationsTests: XCTestCase {
         // The iOS choice survives a relaunch (no -resetLocal: data persists).
         app.terminate()
         let relaunched = XCUIApplication()
-        relaunched.launchArguments = ["-notifDebug"]
+        relaunched.launchArguments = ["-notifDebug", "-noAutoLocate"]
         relaunched.launch()
         XCTAssertTrue(relaunched.buttons["settingsBtn"].waitForExistence(timeout: 15))
         waitPending(relaunched) { !$0.isEmpty }
@@ -247,10 +295,11 @@ final class MasjidCenterNotificationsTests: XCTestCase {
 
     func testFridayAlertSwitchPresent() throws {
         let app = launchStandalone()
-        openNotifications(app)
-        XCTAssertFalse(toggleEnabled(app, "notifQuranToggle"), "disabled while master off")
+        openQuran(app)
+        XCTAssertTrue(toggleEnabled(app, "notifQuranToggle"), "usable while master off")
         enableMaster(app)
-        XCTAssertTrue(toggleEnabled(app, "notifQuranToggle"), "enabled once master is on")
+        openQuran(app)
+        XCTAssertTrue(toggleEnabled(app, "notifQuranToggle"), "usable once master is on")
         // No quran-friday request: the Friday recitation setting is off by
         // default in standalone, so the type switch alone must not schedule one.
         waitPending(app) { !$0.contains("quran-friday") }
@@ -272,15 +321,18 @@ final class MasjidCenterNotificationsTests: XCTestCase {
         }
 
         // Athan → configured file (bundled default_athan.mp3 → notif-athan.caf).
+        openAthanCall(app)
         tapSegment(app, "notifSoundAthan", 1)
         waitSounds(app) { $0.contains("athan=notif-athan-") }
         waitPending(app) { $0.contains { $0.hasPrefix("athan-") } }
 
         // Quran → configured Friday recitation file → notif-quran.caf.
+        openQuran(app)
         tapSegment(app, "notifSoundQuran", 1)
         waitSounds(app) { $0.contains("quran=notif-quran-") }
 
         // Athan back to "Notify" — the quran choice is untouched.
+        openAthanCall(app)
         tapSegment(app, "notifSoundAthan", 0)
         waitSounds(app) { $0.contains("athan=water_drop.wav") && $0.contains("quran=notif-quran-") }
     }
@@ -301,6 +353,7 @@ extension MasjidCenterNotificationsTests {
         let app = launchStandalone()
         enableMaster(app)
         if athanSound {
+            ensureSection(app, "Athan call", probe: "notifSoundAthan")
             tapSegment(app, "notifSoundAthan", 1)
             waitSounds(app) { $0.contains("athan=notif-athan-") }
         }
@@ -310,7 +363,7 @@ extension MasjidCenterNotificationsTests {
 
     private func relaunch(_ extra: [String]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-notifDebug"] + extra
+        app.launchArguments = ["-notifDebug", "-noAutoLocate"] + extra
         app.launch()
         XCTAssertTrue(app.buttons["settingsBtn"].waitForExistence(timeout: 15))
         return app
@@ -358,9 +411,7 @@ extension MasjidCenterNotificationsTests {
         _ = firstLaunchConfigured(athanSound: false)   // master ON (slider is master-subordinate)
         let app = relaunch([])
         app.buttons["settingsBtn"].tap()
-        let header = app.buttons["section-Notifications"]
-        for _ in 0..<10 where !header.isHittable { app.swipeUp() }
-        header.tap()
+        ensureSection(app, "Audio control", probe: "playbackVolumeSlider")
         let slider = app.sliders["playbackVolumeSlider"]
         for _ in 0..<10 where !slider.exists { app.swipeUp() }
         XCTAssertTrue(slider.waitForExistence(timeout: 5))
@@ -370,7 +421,7 @@ extension MasjidCenterNotificationsTests {
             .press(forDuration: 0.2, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         sleep(1)
         XCTAssertEqual(slider.normalizedSliderPosition, 0.5, accuracy: 0.06)
-        let label = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Playback volume:'")).firstMatch
+        let label = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Athan & recitation volume'")).firstMatch
         XCTAssertTrue(label.exists, "volume label shown")
         XCTAssertFalse(label.label.contains("100"), "label follows the slider: \(label.label)")
     }

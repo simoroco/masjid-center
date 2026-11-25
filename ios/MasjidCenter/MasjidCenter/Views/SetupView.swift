@@ -104,15 +104,27 @@ struct SetupView: View {
             queryChanged(q)
         }
         .task {
-            // Background LAN scan: probe the subnet for a Masjid Center server
-            // and offer it as a chip — the field itself is never touched. The
-            // task is cancelled automatically when the setup view disappears.
+            // Boot-time helpers, fully independent: a slow LAN scan must never
+            // delay the city, nor a pending location prompt the server chip.
+            #if DEBUG
+            let autoLocate = !ProcessInfo.processInfo.arguments.contains("-noAutoLocate")
+            #else
+            let autoLocate = true
+            #endif
+            if autoLocate { Task { await prefillFromLocation() } }
             scanning = true
             defer { scanning = false }
             guard let url = await ServerDiscovery.findServer(), !Task.isCancelled else { return }
-            guard query.isEmpty, place == nil else { return }
             discovered = url
         }
+    }
+
+    /// Asks for the location and drops the detected city into the field — only
+    /// while the field is still untouched (never overwrites what the user typed).
+    private func prefillFromLocation() async {
+        guard let p = await location.resolve(), !Task.isCancelled,
+              query.isEmpty, place == nil, !busy else { return }
+        validate(p)
     }
 
     // MARK: Pieces
@@ -244,7 +256,7 @@ struct SetupView: View {
                 .background(theme.inputBg, in: RoundedRectangle(cornerRadius: 18))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-            } else if let discovered, kind == .empty {
+            } else if let discovered, serverURL == nil {
                 discoveredChip(theme, discovered)
             }
         }

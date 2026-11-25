@@ -51,6 +51,7 @@
 		EA21C0553D72E622EA6C5ED0 /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = BF6DFFE30F95C961379B5D4E /* Intro & Athan - Muadin Hafiz Mustafa Özcan.mp3 */; };
 		F1C97F9A6F983B2BD638A6CC /* FloatingBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D827C56224DDF3E16B98A7 /* FloatingBars.swift */; };
 		F50303FB00F1504550C25E43 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A501E4E8978415E21A04C091 /* NotificationManager.swift */; };
+		F989033AFB15FFB1D38ADF0F /* DebugScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67159C1C3293886D57D039A5 /* DebugScenarios.swift */; };
 		FBEA022F3A3E1E22F0327967 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F130217C1FBA21077652FC82 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -86,6 +87,7 @@
 		52F28B5F9778EB67D5D181A6 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		58724CC21DF638DA5C4A16C3 /* AppStoreOffline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreOffline.swift; sourceTree = "<group>"; };
 		62EC7769D6C16C280F9239B5 /* Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "Athan - Muhammad Marwan Qassas - Masjid Al Nabawi.mp3"; sourceTree = "<group>"; };
+		67159C1C3293886D57D039A5 /* DebugScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugScenarios.swift; sourceTree = "<group>"; };
 		684CD90D5257CC473FF9DF2A /* PrayerOverviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerOverviewSheet.swift; sourceTree = "<group>"; };
 		6C61D1A3DB2236788DC5B1C2 /* NotificationSoundMaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSoundMaker.swift; sourceTree = "<group>"; };
 		6DD2DE2B4C5CFC377D4B458B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 				F953B7D38065B366BC5069D5 /* AppStore.swift */,
 				58724CC21DF638DA5C4A16C3 /* AppStoreOffline.swift */,
 				D721142CBB3A5C58AC45B031 /* AudioManager.swift */,
+				67159C1C3293886D57D039A5 /* DebugScenarios.swift */,
 				BCE500B8555BFD232100AEE7 /* ICSClient.swift */,
 				34125AB13FD79AA8AE77A099 /* LocalStore.swift */,
 				52F28B5F9778EB67D5D181A6 /* LocationManager.swift */,
@@ -325,6 +328,7 @@
 				DDC81990CDB74A438D05F8E2 /* AudioManager.swift in Sources */,
 				74B9C32B4D0F7067DDF63F81 /* CalendarSheet.swift in Sources */,
 				102C80D5CF6BE92439820C21 /* ContentView.swift in Sources */,
+				F989033AFB15FFB1D38ADF0F /* DebugScenarios.swift in Sources */,
 				F1C97F9A6F983B2BD638A6CC /* FloatingBars.swift in Sources */,
 				B527D81D75F4E2D43CAEBEB7 /* ICSClient.swift in Sources */,
 				B93464B112E23F53DB6491F6 /* LocalStore.swift in Sources */,

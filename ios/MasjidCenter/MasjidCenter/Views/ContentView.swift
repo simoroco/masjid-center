@@ -161,6 +161,12 @@ struct ContentView: View {
                 }
             })
         .task { await store.boot() }
+        #if DEBUG
+        .task { await store.runAudioDebugScenario() }
+        .task { await store.runDebugSelfTests() }
+        .task { await store.runAudioEdgeScenario() }
+        .task { await store.runSoundRangeTest() }
+        #endif
         // Test hooks: -showTasbih YES opens the counter, -showSettings YES opens Settings.
         .onAppear {
             if UserDefaults.standard.bool(forKey: "showTasbih") { showTasbih = true }
@@ -183,6 +189,7 @@ struct ContentView: View {
         // E2E probe: launched with -notifDebug, exposes the pending
         // notification identifiers so tests can assert what is scheduled.
         .background {
+            #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-notifDebug") {
                 Text(store.notifDebugSummary)
                     .accessibilityIdentifier("notifDebug")
@@ -195,6 +202,7 @@ struct ContentView: View {
                     .frame(width: 1, height: 1)
                     .opacity(0.001)
             }
+            #endif
         }
     }
 

@@ -13,7 +13,7 @@ final class MasjidCenterUITests: XCTestCase {
 
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-serverBase", Self.serverBase]
+        app.launchArguments = ["-serverBase", Self.serverBase, "-noAutoLocate"]
         app.launch()
         return app
     }
@@ -99,7 +99,7 @@ final class MasjidCenterUITests: XCTestCase {
         XCTAssertTrue(waitFor(app.buttons["closeSettings"]))
         for section in ["section-General", "section-Location", "section-Athan call",
                         "section-Objectives", "section-Quran recitation",
-                        "section-Audio control", "section-Notifications",
+                        "section-Audio control",
                         "section-Backup & Restore"] {
             XCTAssertTrue(app.buttons[section].exists, "Missing \(section)")
         }
@@ -190,7 +190,7 @@ extension MasjidCenterUITests {
     /// quick validation did literally nothing.
     func testSetupServerFlow() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-resetLocal"]
+        app.launchArguments = ["-resetLocal", "-noAutoLocate"]
         app.launch()
         let field = app.textFields["setupField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "Setup screen expected")
@@ -205,7 +205,7 @@ extension MasjidCenterUITests {
     /// Tapping the chip fills the field, checks the server, then Connect boots.
     func testSetupDiscoveryChipConnects() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-resetLocal"]
+        app.launchArguments = ["-resetLocal", "-noAutoLocate"]
         app.launch()
         let chip = app.buttons["setupDiscoveredServer"]
         XCTAssertTrue(chip.waitForExistence(timeout: 20),
@@ -285,7 +285,7 @@ extension MasjidCenterUITests {
         online.terminate()
 
         let app = XCUIApplication()
-        app.launchArguments = ["-serverBase", "http://127.0.0.1:9"]
+        app.launchArguments = ["-serverBase", "http://127.0.0.1:9", "-noAutoLocate"]
         app.launch()
         XCTAssertTrue(waitFor(app.buttons["prayer-Dohr"], 15), "Offline boot must show cached prayers")
         XCTAssertTrue(app.buttons["nextDay"].exists)
@@ -294,6 +294,181 @@ extension MasjidCenterUITests {
         // Restore the real server for the following tests.
         let back = launch()
         XCTAssertTrue(waitFor(back.buttons["prayer-Dohr"], 20))
+    }
+}
+
+// MARK: - Server-config controls follow the server availability.
+
+extension MasjidCenterUITests {
+    private func reveal(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        let el = app.buttons[id]
+        for _ in 0..<10 where !el.exists || !el.isHittable { app.swipeUp() }
+        return el
+    }
+
+    private func openSection(_ app: XCUIApplication, _ name: String) {
+        let h = app.buttons["section-\(name)"]
+        for _ in 0..<10 where !(h.exists && h.isHittable && h.frame.minY > 105) { app.swipeUp() }
+        for _ in 0..<10 where !(h.exists && h.isHittable && h.frame.minY > 105) { app.swipeDown() }
+        h.tap()
+    }
+
+    /// Returns [serverControlEnabled, localControlEnabled] for the Quran + Audio sections.
+    private func serverControlStates(_ app: XCUIApplication) -> (quranServer: Bool, fridayToggle: Bool, testServer: Bool, testApp: Bool) {
+        XCTAssertTrue(waitFor(app.buttons["settingsBtn"], 20))
+        app.buttons["settingsBtn"].tap()
+        XCTAssertTrue(waitFor(app.buttons["closeSettings"]))
+        openSection(app, "Quran recitation")
+        let q = reveal(app, "playFullQuranBtn")
+        XCTAssertTrue(q.exists, "server 'Listen to Sourat Al Kahf now' missing")
+        let quranServer = q.isEnabled
+        XCTAssertTrue(reveal(app, "playLocalQuranBtn").isEnabled, "In app Quran button must always be usable")
+        XCTAssertTrue(reveal(app, "notifQuranToggle").isEnabled, "In app Quran alert switch must always be usable")
+        let t = reveal(app, "fridayQuranToggle")
+        let fridayToggle = t.exists && t.isEnabled
+        openSection(app, "Audio control")
+        let ts = reveal(app, "testAthanServerBtn")
+        XCTAssertTrue(ts.exists, "server test button missing")
+        return (quranServer, fridayToggle, ts.isEnabled, reveal(app, "testAthanBtn").isEnabled)
+    }
+
+    func testServerOptionsGreyedWhenServerOffline() throws {
+        // Online: the server controls are usable.
+        let online = launch()
+        XCTAssertTrue(waitFor(online.buttons["prayer-Dohr"], 20))
+        sleep(3)
+        let on = serverControlStates(online)
+        XCTAssertTrue(on.quranServer && on.fridayToggle && on.testServer && on.testApp, "online: all enabled \(on)")
+        online.terminate()
+
+        // Server unreachable: every server control is greyed, local ones stay usable.
+        let app = XCUIApplication()
+        app.launchArguments = ["-serverBase", "http://127.0.0.1:9", "-noAutoLocate"]
+        app.launch()
+        XCTAssertTrue(waitFor(app.buttons["prayer-Dohr"], 15))
+        let off = serverControlStates(app)
+        XCTAssertFalse(off.quranServer, "offline: server Quran button must be disabled")
+        XCTAssertFalse(off.fridayToggle, "offline: Friday toggle must be disabled")
+        XCTAssertFalse(off.testServer, "offline: server test must be disabled")
+        XCTAssertTrue(off.testApp, "offline: the in-app test must stay enabled")
+        app.terminate()
+
+        let back = launch()
+        XCTAssertTrue(waitFor(back.buttons["prayer-Dohr"], 20))
+    }
+}
+
+// MARK: - Settings layout: Global → In app → Server config, per section.
+
+extension MasjidCenterUITests {
+    private func y(_ app: XCUIApplication, _ id: String) -> CGFloat? {
+        for q in [app.buttons[id], app.otherElements[id], app.switches[id], app.sliders[id], app.segmentedControls[id], app.staticTexts[id]] where q.exists {
+            return q.frame.minY
+        }
+        return nil
+    }
+    private func openSec(_ app: XCUIApplication, _ name: String) {
+        let h = app.buttons["section-\(name)"]
+        for _ in 0..<10 where !(h.exists && h.isHittable && h.frame.minY > 105) { app.swipeUp() }
+        for _ in 0..<10 where !(h.exists && h.isHittable && h.frame.minY > 105) { app.swipeDown() }
+        h.tap()
+        sleep(1)
+    }
+    /// Asserts a strictly increasing vertical order of the named elements.
+    private func assertOrder(_ app: XCUIApplication, _ ids: [String], _ ctx: String) {
+        var prev: CGFloat = -.infinity, prevId = ""
+        for id in ids {
+            guard let v = y(app, id) else { XCTFail("\(ctx): '\(id)' missing"); return }
+            XCTAssertGreaterThan(v, prev, "\(ctx): '\(id)' must be below '\(prevId)'")
+            prev = v; prevId = id
+        }
+    }
+
+    func testSettingsGroupsLayoutServerMode() throws {
+        let app = launch()
+        XCTAssertTrue(waitFor(app.buttons["prayer-Dohr"], 20)); sleep(3)
+        app.buttons["settingsBtn"].tap()
+        XCTAssertTrue(waitFor(app.buttons["closeSettings"]))
+        XCTAssertFalse(app.buttons["section-Notifications"].exists, "the Notifications section no longer exists")
+
+        openSec(app, "Athan call")
+        assertOrder(app, ["GLOBAL", "audioFilePicker", "IN APP", "notifAthanToggle", "iossched-week-Dohr", "SERVER CONFIG", "sched-week-Dohr"], "Athan/server")
+
+        openSec(app, "Quran recitation")
+        assertOrder(app, ["GLOBAL", "fridayQuranFilePicker", "IN APP", "playLocalQuranBtn", "notifQuranToggle", "SERVER CONFIG", "playFullQuranBtn", "fridayQuranToggle"], "Quran/server")
+
+        openSec(app, "Objectives")
+        assertOrder(app, ["IN APP", "addObjectiveBtn", "notifObjectivesToggle"], "Objectives")
+        XCTAssertNil(y(app, "GLOBAL"), "Objectives: everything is In app")
+        XCTAssertNil(y(app, "SERVER CONFIG"), "Objectives: nothing is server-side")
+
+        openSec(app, "Audio control")
+        assertOrder(app, ["GLOBAL", "stopAudioBtn", "testAthanServerBtn", "IN APP", "notificationsToggle", "playbackVolumeSlider", "SERVER CONFIG", "audioOutputPicker", "audioCardPicker"], "Audio/server")
+        XCTAssertFalse(app.staticTexts["App startup sound"].exists, "App startup sound was removed")
+        XCTAssertTrue(app.staticTexts["Server startup sound"].exists || { for _ in 0..<6 where !app.staticTexts["Server startup sound"].exists { app.swipeUp() }; return app.staticTexts["Server startup sound"].exists }(), "Server startup sound stays in Server config")
+    }
+}
+
+// MARK: - First-launch setup: automatic location + server discovery.
+// Preconditions (set by the runner script before the test):
+//   xcrun simctl privacy booted grant|revoke location com.masjidcenter.app
+//   xcrun simctl location booted set 48.8566,2.3522
+
+extension MasjidCenterUITests {
+    private func freshSetup() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-resetLocal"]          // NO -noAutoLocate: the real boot behaviour
+        app.launch()
+        return app
+    }
+
+    /// These two tests depend on the simulator's location permission, which a
+    /// test can't set: run them with `echo granted|denied > /tmp/mc-setup-mode`
+    /// after the matching `simctl privacy … location` — skipped otherwise.
+    private func requireSetupMode(_ mode: String) throws {
+        let m = (try? String(contentsOfFile: "/tmp/mc-setup-mode", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        try XCTSkipUnless(m == mode, "set /tmp/mc-setup-mode to '\(mode)' (and the simulator location permission accordingly)")
+    }
+
+    func testSetupAutoLocatesCityAndOffersServer() throws {
+        try requireSetupMode("granted")
+        let app = freshSetup()
+        let field = app.textFields["setupField"]
+        XCTAssertTrue(waitFor(field, 15))
+        // City pre-filled from the device position, without any tap.
+        let filled = NSPredicate { _, _ in
+            let v = (field.value as? String) ?? ""
+            return !v.isEmpty && v != "City or server address"
+        }
+        let exp = XCTNSPredicateExpectation(predicate: filled, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [exp], timeout: 30), .completed, "city must be pre-filled; field = \(field.value ?? "nil")")
+        let city = (field.value as? String) ?? ""
+        XCTAssertTrue(city.localizedCaseInsensitiveContains("Paris"), "expected Paris, got '\(city)'")
+        // The LAN server is offered next to the city (chip), not injected in the field.
+        XCTAssertTrue(waitFor(app.buttons["setupDiscoveredServer"], 30), "discovered server chip missing")
+        XCTAssertEqual(field.value as? String, city, "the field must still hold the city")
+        // Continue works with the detected city.
+        let go = app.buttons["setupConfirmButton"]
+        XCTAssertTrue(go.isEnabled)
+        go.tap()
+        XCTAssertTrue(waitFor(app.buttons["prayer-Dohr"], 60), "standalone boot with the detected city")
+    }
+
+    func testSetupLocationDeniedKeepsFieldEmptyAndStillOffersServer() throws {
+        try requireSetupMode("denied")
+        let app = freshSetup()
+        let field = app.textFields["setupField"]
+        XCTAssertTrue(waitFor(field, 15))
+        XCTAssertTrue(waitFor(app.buttons["setupDiscoveredServer"], 30), "server chip must appear even if location is denied")
+        let v = (field.value as? String) ?? ""
+        XCTAssertTrue(v.isEmpty || v == "City or server address", "no city when the location is denied, got '\(v)'")
+        let status = app.descendants(matching: .any)["setupStatus"].firstMatch
+        XCTAssertTrue(status.exists)
+        XCTAssertTrue((status.label).localizedCaseInsensitiveContains("denied") || (status.label).localizedCaseInsensitiveContains("manually"),
+                      "denied location must explain what to do, got '\(status.label)'")
+        // Manual path still works.
+        field.tap(); field.typeText("Paris\n")
+        XCTAssertTrue(waitFor(app.buttons["prayer-Dohr"], 60))
     }
 }
 

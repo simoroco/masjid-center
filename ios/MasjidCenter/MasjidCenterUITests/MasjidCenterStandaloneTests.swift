@@ -14,7 +14,7 @@ final class MasjidCenterStandaloneTests: XCTestCase {
 
     private func launchFresh() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-resetLocal"]
+        app.launchArguments = ["-resetLocal", "-noAutoLocate"]
         app.launch()
         return app
     }
@@ -304,15 +304,17 @@ final class MasjidCenterStandaloneTests: XCTestCase {
         XCTAssertTrue(app.buttons["closeSettings"].waitForExistence(timeout: 10))
         let master = app.buttons["notificationsToggle"]
         if !master.waitForExistence(timeout: 3) {
-            // The master switch lives in the "Notifications" section now.
-            app.buttons["section-Notifications"].tap()
+            // The master switch lives in Audio control → In app now.
+            app.buttons["section-Audio control"].tap()
             for _ in 0..<6 where !master.exists { app.swipeUp() }   // lazy sheet content
             XCTAssertTrue(master.waitForExistence(timeout: 5), "Notifications must expose the master switch")
         }
         master.tap()
         app.tap()   // nudge the interruption monitor if the prompt is up
-        openSettingsSection(app, "Audio control")
         let test = app.buttons["testAthanBtn"]
+        // Master switch lives in Audio control too — only tap the header if
+        // the section isn't already open (a second tap would close it).
+        if !test.exists { openSettingsSection(app, "Audio control") }
         XCTAssertTrue(test.waitForExistence(timeout: 5))
         test.tap()
         let stop = app.buttons["stopAudioBannerSheet"]

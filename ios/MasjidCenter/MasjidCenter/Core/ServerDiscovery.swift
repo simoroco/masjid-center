@@ -22,6 +22,7 @@ enum ServerDiscovery {
 
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = probeTimeout
+        cfg.timeoutIntervalForResource = 3          // hard cap: a host dripping bytes can't stall the scan
         cfg.waitsForConnectivity = false
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         let session = URLSession(configuration: cfg)
@@ -52,9 +53,17 @@ enum ServerDiscovery {
     private static func probe(host: UInt32, session: URLSession) async -> String? {
         let ip = ipv4String(host)
         guard let url = URL(string: "http://\(ip):\(port)/api/server-time"),
-              let (data, resp) = try? await session.data(from: url),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              (try? JSONDecoder().decode(ServerTime.self, from: data)) != nil else { return nil }
+              let (bytes, resp) = try? await session.bytes(from: url),
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        // Any host on the LAN can answer: read at most 4 KB before decoding.
+        var data = Data()
+        do {
+            for try await b in bytes {
+                data.append(b)
+                if data.count > 4096 { return nil }
+            }
+        } catch { return nil }
+        guard (try? JSONDecoder().decode(ServerTime.self, from: data)) != nil else { return nil }
         return ip
     }
 

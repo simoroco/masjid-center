@@ -241,17 +241,17 @@ actor APIClient {
     }
 
     /// Streaming URLs (AVPlayer) — nonisolated, base is a let.
-    nonisolated func athanURL(_ file: String) -> URL? {
-        guard !base.isEmpty else { return nil }
-        let e = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
-        return URL(string: base + "/api/audio/" + e)
+    /// A file name is ONE path segment: "/" is encoded too, and "."/".." are
+    /// refused, so a crafted name (server list, CSV import) can't traverse.
+    nonisolated private func fileURL(_ dir: String, _ file: String) -> URL? {
+        guard !base.isEmpty, !file.isEmpty, file != ".", file != ".." else { return nil }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove("/")
+        guard let e = file.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: base + dir + e)
     }
-    nonisolated func quranURL(_ file: String) -> URL? {
-        guard !base.isEmpty else { return nil }
-        let e = file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? file
-        return URL(string: base + "/api/quran/" + e)
-    }
-    nonisolated func startupURL() -> URL? { base.isEmpty ? nil : URL(string: base + "/audio/system/startup.mp3") }
+    nonisolated func athanURL(_ file: String) -> URL? { fileURL("/api/audio/", file) }
+    nonisolated func quranURL(_ file: String) -> URL? { fileURL("/api/quran/", file) }
 
     // MARK: Statistics
 

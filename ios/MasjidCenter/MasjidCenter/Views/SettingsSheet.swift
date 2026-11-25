@@ -30,6 +30,10 @@ struct SettingsSheet: View {
 
     private var theme: AppTheme { store.theme }
 
+    /// True only in server mode while the server answers — used to grey out
+    /// every "Server config" control when offline (and in standalone).
+    private var serverAvailable: Bool { !store.isStandalone && store.connected }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -67,8 +71,7 @@ struct SettingsSheet: View {
                     accordion(3, "Objectives", "checklist") { tasbihObjectivesSection }
                     accordion(4, "Quran recitation", "book") { quranSection }
                     accordion(5, "Audio control", "speaker.wave.1") { audioSection }
-                    accordion(6, "Notifications", "bell") { notificationsSection }
-                    accordion(7, "Backup & Restore", "externaldrive") { backupSection }
+                    accordion(6, "Backup & Restore", "externaldrive") { backupSection }
 
                     Text(AC.appVersion)
                         .font(.system(size: 13)).foregroundStyle(theme.muted)
@@ -299,6 +302,73 @@ struct SettingsSheet: View {
         )
     }
 
+    /// Small uppercase section label — groups options by where they apply:
+    /// "Global" (shared server & app), "In app" (this iPhone only), "Server config".
+    private func groupHeader(_ title: String, _ icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+            Text(title.uppercased()).font(.system(size: 12, weight: .bold)).tracking(0.6)
+        }
+        .foregroundStyle(theme.textAccent)
+        .padding(.top, 14)   // extra breathing room between groups
+    }
+
+    // MARK: - Shared in-app controls (master switch + playback volume)
+
+    /// Master switch for every notification and sound the app emits on this iPhone.
+    private var notificationsMasterRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ToggleRow(theme: theme, title: "App notifications",
+                      isOn: Binding(get: { store.notificationsEnabled },
+                                    set: { store.notificationsEnabled = $0 }))
+                .accessibilityIdentifier("notificationsToggle")
+            Text("Enable or silence all notifications and Masjid Center sounds on this iPhone.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+        }
+    }
+
+    /// Shown at the top of every "In app" group while the master switch is
+    /// off: the controls stay usable, this just explains why alerts are silent.
+    @ViewBuilder
+    private var masterOffHint: some View {
+        if !store.notificationsEnabled {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.slash.fill").foregroundStyle(theme.danger)
+                Text("App notifications are off — no alert is sent until you enable them.")
+                    .font(.system(size: 12)).foregroundStyle(theme.sheetText)
+                Spacer(minLength: 4)
+                Button("Enable") { store.notificationsEnabled = true }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.textAccent)
+                    .accessibilityIdentifier("enableNotificationsBtn")
+            }
+            .padding(10)
+            .background(theme.inputBg)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("masterOffHint")
+        }
+    }
+
+    /// Volume of the athan / Quran recitation played on this iPhone.
+    private var playbackVolumeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Athan & recitation volume: \(Int((store.iosPlaybackVolume * 100).rounded()))%")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+            HStack(spacing: 10) {
+                Image(systemName: "speaker.fill")
+                Slider(value: Binding(get: { store.iosPlaybackVolume },
+                                      set: { store.iosPlaybackVolume = $0 }),
+                       in: 0...1, step: 0.01)
+                    .tint(Color(hex: 0x2A6DD1))
+                    .accessibilityIdentifier("playbackVolumeSlider")
+                Image(systemName: "speaker.wave.3.fill")
+            }
+            .foregroundStyle(theme.helpText)
+            Text("Volume of the athan and Quran recitation played by the app on this iPhone (relative to the iPhone's volume). Notification sounds follow the iPhone's own volume.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+        }
+    }
+
     // MARK: - General
 
     private var generalSection: some View {
@@ -404,6 +474,7 @@ struct SettingsSheet: View {
 
     private var tasbihObjectivesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            groupHeader("In app", "iphone")
             Text("Objectives").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             VStack(spacing: 0) {
                 let hidden = store.local.snap.hiddenBuiltins
@@ -430,6 +501,16 @@ struct SettingsSheet: View {
                 showActionEditor = true
             }
             Text("Select an objective to set its daily reminder (iOS app only).")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            // iOS-only master switch for every objective reminder configured
+            // in the list above — subordinate to "App notifications".
+            masterOffHint
+            ToggleRow(theme: theme, title: "Objective reminders",
+                      isOn: Binding(get: { store.iosNotifObjectives },
+                                    set: { store.iosNotifObjectives = $0 }))
+                .accessibilityIdentifier("notifObjectivesToggle")
+            Text("Objective reminders notify with the water-drop chime; tapping one opens the app — the Tasbih reminder opens the Tasbih counter.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             tasbihGoalPicker
@@ -761,10 +842,11 @@ struct SettingsSheet: View {
 
     private var athanSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Athan call audio file:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+            groupHeader("Global", "globe")
+            Text("Athan call audio:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             PickerField(theme: theme,
-                        options: store.isStandalone ? AC.bundledAthans : store.audioFiles,
-                        labels: fileLabels(store.isStandalone ? AC.bundledAthans : store.audioFiles),
+                        options: store.isStandalone || !store.connected ? AC.bundledAthans : store.audioFiles,
+                        labels: fileLabels(store.isStandalone || !store.connected ? AC.bundledAthans : store.audioFiles),
                         selection: Binding(
                             get: { store.settings["audio_file"] ?? "" },
                             set: { v in Task { await store.updateSetting("audio_file", v) } }))
@@ -774,10 +856,37 @@ struct SettingsSheet: View {
                  : "Upload your audio files into /audio/athan so they appear in this list.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
+            groupHeader("In app", "iphone")
+            // iOS-only athan alerts — subordinate to the master "App
+            // notifications" switch in Audio control → In app.
+            masterOffHint
+            ToggleRow(theme: theme, title: "Athan call notification",
+                      isOn: Binding(get: { store.iosNotifAthan },
+                                    set: { store.iosNotifAthan = $0 }))
+                .accessibilityIdentifier("notifAthanToggle")
+            soundPicker(configured: "Athan call",
+                        selection: Binding(get: { store.iosNotifSoundAthan },
+                                           set: { store.iosNotifSoundAthan = $0 }),
+                        disabled: !store.iosNotifAthan,
+                        id: "notifSoundAthan")
+            Group {
+                Text("App Schedule:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+                Text("Which athans send a notification on this iPhone — independent from the playback schedule below (that one controls audio playback).")
+                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
+                ScheduleMatrixView(theme: theme, scope: .ios)
+            }
+            Text("\"Notify\" plays the water-drop chime; \"Athan call\" plays the configured athan (30 s at most). Tap the notification to keep listening in the app.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            // In standalone this matrix drives LOCAL playback → "Playback".
+            groupHeader(store.isStandalone ? "Playback" : "Server config",
+                        store.isStandalone ? "speaker.wave.2" : "server.rack")
             Text("Athan Schedule:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             Text("Select a day to configure athans. Use \"Whole week\" to enable/disable a prayer for the entire week.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
             ScheduleMatrixView(theme: theme)
+                .disabled(!store.isStandalone && !serverAvailable)
+                .opacity(store.isStandalone || serverAvailable ? 1 : 0.5)
 
         }
     }
@@ -785,8 +894,9 @@ struct SettingsSheet: View {
     // MARK: - Quran recitation
 
     private var quranSection: some View {
-        let files = store.isStandalone ? AC.bundledQurans : store.quranFiles
+        let files = store.isStandalone || !store.connected ? AC.bundledQurans : store.quranFiles
         return VStack(alignment: .leading, spacing: 12) {
+            groupHeader("Global", "globe")
             Text("Al Kahf Sourat audio file:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             PickerField(theme: theme,
                         options: files,
@@ -800,27 +910,48 @@ struct SettingsSheet: View {
                  : "Upload your audio files into /audio/coran so they appear in this list.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
+            groupHeader("In app", "iphone")
             PrimaryButton(theme: theme, title: "Listen to Sourat Al Kahf now",
-                          systemImage: "speaker.wave.1", accessibility: "playFullQuranBtn") {
+                          systemImage: "speaker.wave.1", accessibility: "playLocalQuranBtn") {
+                store.playLocalQuran()
+            }
+            Text("Plays the bundled file on this iPhone — keeps playing in the background when the app is closed.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            masterOffHint
+            ToggleRow(theme: theme, title: "Quran recitation",
+                      isOn: Binding(get: { store.iosNotifQuran },
+                                    set: { store.iosNotifQuran = $0 }))
+                .accessibilityIdentifier("notifQuranToggle")
+            soundPicker(configured: "Quran recitation",
+                        selection: Binding(get: { store.iosNotifSoundQuran },
+                                           set: { store.iosNotifSoundQuran = $0 }),
+                        disabled: !store.iosNotifQuran,
+                        id: "notifSoundQuran")
+            Text("\"Notify\" plays the water-drop chime; \"Quran recitation\" plays the configured recitation (30 s at most). Tap the notification to keep listening in the app.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            groupHeader("Server config", "server.rack")
+            PrimaryButton(theme: theme, title: "Listen to Sourat Al Kahf now",
+                          systemImage: "speaker.wave.1", disabled: !serverAvailable,
+                          accessibility: "playFullQuranBtn") {
                 Task { await store.playFullQuran() }
             }
-            Text(store.isStandalone
-                 ? ""
-                 : "Plays on server and/or app (depending on audio output setting). Recitation continues until the end.")
+            Text("Plays on server and/or app (depending on audio output setting). Recitation continues until the end.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             Text("Schedule every Friday:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             ToggleRow(theme: theme, title: "Al Kahf Sourat on Friday",
                       isOn: Binding(get: { store.settings["friday_quran_enabled"] == "1" },
                                     set: { v in Task { await store.updateSetting("friday_quran_enabled", v ? "1" : "0") } }),
-                      disabled: store.isStandalone)
+                      disabled: !serverAvailable)
             .accessibilityIdentifier("fridayQuranToggle")
             Text("Al Kahf sourat listening every Friday (on the server only)")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             QuranTimePicker(theme: theme)
-                .disabled(store.isStandalone)
-                .opacity(store.isStandalone ? 0.5 : 1)
+                .disabled(!serverAvailable)
+                .opacity(serverAvailable ? 1 : 0.5)
         }
     }
 
@@ -833,6 +964,9 @@ struct SettingsSheet: View {
 
     private var standaloneAudioSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            groupHeader("In app", "iphone")
+            notificationsMasterRow
+            playbackVolumeRow
             PrimaryButton(theme: theme, title: "Stop playing Athan",
                           systemImage: "stop.circle", danger: true,
                           accessibility: "stopAudioBtn") {
@@ -848,8 +982,49 @@ struct SettingsSheet: View {
     }
 
     private var serverAudioSection: some View {
-        let supported = store.audioSupport?.supported ?? true
+        let supported = serverAvailable && (store.audioSupport?.supported ?? true)
         return VStack(alignment: .leading, spacing: 12) {
+            groupHeader("Global", "globe")
+            PrimaryButton(theme: theme, title: "Stop playing Athan and Quran recitation",
+                          systemImage: "stop.circle", danger: true,
+                          accessibility: "stopAudioBtn") {
+                Task { await store.stopAllAudio() }
+            }
+            Text("Stop all audio playback (athan, Quran recitation, startup, tests) on both the app and server.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            // Tests
+            Text("Athan & Quran audio tests:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
+            HStack(spacing: 10) {
+                PrimaryButton(theme: theme, title: "Athan call now (app)",
+                              systemImage: "speaker.wave.2", accessibility: "testAthanBtn") {
+                    store.testAthanWeb()
+                }
+                PrimaryButton(theme: theme, title: "Athan call now (server)",
+                              systemImage: "speaker.wave.2", disabled: !supported,
+                              accessibility: "testAthanServerBtn") {
+                    Task { await store.testAthanServer() }
+                }
+            }
+            HStack(spacing: 10) {
+                PrimaryButton(theme: theme, title: "Recite Quran (30s app preview)",
+                              systemImage: "speaker.wave.2", accessibility: "testQuranBtn") {
+                    store.testQuranWeb()
+                }
+                PrimaryButton(theme: theme, title: "Recite Quran (30s server)",
+                              systemImage: "speaker.wave.2", disabled: !supported,
+                              accessibility: "testQuranServerBtn") {
+                    Task { await store.testQuranServer() }
+                }
+            }
+            Text("Quickly test Athan and Quran recitation on the app or directly on the server speakers. Tests are limited to 30 seconds.")
+                .font(.system(size: 12)).foregroundStyle(theme.helpText)
+
+            groupHeader("In app", "iphone")
+            notificationsMasterRow
+            playbackVolumeRow
+
+            groupHeader("Server config", "server.rack")
             // Audio output
             Text("Audio output:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
             PickerField(theme: theme,
@@ -898,7 +1073,7 @@ struct SettingsSheet: View {
                                             await store.updateSetting("sync_fajr_volume", v ? "1" : "0")
                                             if !v { await store.updateSetting("fajr_volume", store.settings["volume"] ?? "50") }
                                         }
-                                    }))
+                                    }), disabled: !supported)
             Text("When enabled, you can set a specific volume for Fajr below. When disabled, Fajr uses the same volume as other prayers.")
                 .font(.system(size: 12)).foregroundStyle(theme.helpText)
             VolumeSlider(theme: theme,
@@ -912,47 +1087,11 @@ struct SettingsSheet: View {
                       isOn: Binding(get: { store.settings["play_on_startup"] == "1" },
                                     set: { v in Task { await store.updateSetting("play_on_startup", v ? "1" : "0") } }),
                       disabled: !supported)
-            ToggleRow(theme: theme, title: "App startup sound",
-                      isOn: Binding(get: { store.settings["play_on_page_load"] == "1" },
-                                    set: { v in Task { await store.updateSetting("play_on_page_load", v ? "1" : "0") } }))
-
-            PrimaryButton(theme: theme, title: "Stop playing Athan and Quran recitation",
-                          systemImage: "stop.circle", danger: true,
-                          accessibility: "stopAudioBtn") {
-                Task { await store.stopAllAudio() }
-            }
-            Text("Stop all audio playback (athan, Quran recitation, startup, tests) on both the app and server.")
-                .font(.system(size: 12)).foregroundStyle(theme.helpText)
-
-            // Tests
-            Text("Athan & Quran audio tests:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
-            HStack(spacing: 10) {
-                PrimaryButton(theme: theme, title: "Athan call now (app)",
-                              systemImage: "speaker.wave.2", accessibility: "testAthanBtn") {
-                    store.testAthanWeb()
-                }
-                PrimaryButton(theme: theme, title: "Athan call now (server)",
-                              systemImage: "speaker.wave.2", disabled: !supported,
-                              accessibility: "testAthanServerBtn") {
-                    Task { await store.testAthanServer() }
-                }
-            }
-            HStack(spacing: 10) {
-                PrimaryButton(theme: theme, title: "Recite Quran (30s app preview)",
-                              systemImage: "speaker.wave.2", accessibility: "testQuranBtn") {
-                    store.testQuranWeb()
-                }
-                PrimaryButton(theme: theme, title: "Recite Quran (30s server)",
-                              systemImage: "speaker.wave.2", disabled: !supported,
-                              accessibility: "testQuranServerBtn") {
-                    Task { await store.testQuranServer() }
-                }
-            }
-            Text("Quickly test Athan and Quran recitation on the app or directly on the server speakers. Tests are limited to 30 seconds.")
-                .font(.system(size: 12)).foregroundStyle(theme.helpText)
 
             // API commands
             apiCommandsCard
+                .disabled(!serverAvailable)
+                .opacity(serverAvailable ? 1 : 0.5)
         }
     }
 
@@ -994,82 +1133,6 @@ struct SettingsSheet: View {
             .sheetCard(theme)
         }
         .foregroundStyle(theme.sheetText)
-    }
-
-    // MARK: - Notifications (all iOS notification options, grouped)
-
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Master switch for everything the app emits on this iPhone:
-            // notifications AND sounds.
-            ToggleRow(theme: theme, title: "App notifications",
-                      isOn: Binding(get: { store.notificationsEnabled },
-                                    set: { store.notificationsEnabled = $0 }))
-                .accessibilityIdentifier("notificationsToggle")
-            Text("Enable or silence all notifications and Masjid Center sounds on this iPhone.")
-                .font(.system(size: 13)).foregroundStyle(theme.helpText)
-
-            // Per-type switches + their notification sound, always
-            // subordinate to the master switch above.
-            ToggleRow(theme: theme, title: "Athan calls",
-                      isOn: Binding(get: { store.iosNotifAthan },
-                                    set: { store.iosNotifAthan = $0 }),
-                      disabled: !store.notificationsEnabled)
-                .accessibilityIdentifier("notifAthanToggle")
-            soundPicker(configured: "Athan call",
-                        selection: Binding(get: { store.iosNotifSoundAthan },
-                                           set: { store.iosNotifSoundAthan = $0 }),
-                        disabled: !store.notificationsEnabled || !store.iosNotifAthan,
-                        id: "notifSoundAthan")
-
-            Group {
-                Text("App Schedule:").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
-                Text("Which athans send a notification on this iPhone — independent from the athan schedule in \"Athan call\" (that one controls audio playback).")
-                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
-                ScheduleMatrixView(theme: theme, scope: .ios)
-            }
-            .disabled(!store.notificationsEnabled)
-            .opacity(store.notificationsEnabled ? 1 : 0.5)
-
-            ToggleRow(theme: theme, title: "Objective reminders",
-                      isOn: Binding(get: { store.iosNotifObjectives },
-                                    set: { store.iosNotifObjectives = $0 }),
-                      disabled: !store.notificationsEnabled)
-                .accessibilityIdentifier("notifObjectivesToggle")
-
-            ToggleRow(theme: theme, title: "Quran recitation",
-                      isOn: Binding(get: { store.iosNotifQuran },
-                                    set: { store.iosNotifQuran = $0 }),
-                      disabled: !store.notificationsEnabled)
-                .accessibilityIdentifier("notifQuranToggle")
-            soundPicker(configured: "Quran recitation",
-                        selection: Binding(get: { store.iosNotifSoundQuran },
-                                           set: { store.iosNotifSoundQuran = $0 }),
-                        disabled: !store.notificationsEnabled || !store.iosNotifQuran,
-                        id: "notifSoundQuran")
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Playback volume: \(Int((store.iosPlaybackVolume * 100).rounded()))%")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.labelText)
-                HStack(spacing: 10) {
-                    Image(systemName: "speaker.fill")
-                    Slider(value: Binding(get: { store.iosPlaybackVolume },
-                                          set: { store.iosPlaybackVolume = $0 }),
-                           in: 0...1, step: 0.01)
-                        .tint(Color(hex: 0x2A6DD1))
-                        .accessibilityIdentifier("playbackVolumeSlider")
-                    Image(systemName: "speaker.wave.3.fill")
-                }
-                .foregroundStyle(theme.helpText)
-                Text("Volume of the athan and Quran recitation played by the app on this iPhone (relative to the iPhone's volume). Notification sounds follow the iPhone's own volume.")
-                    .font(.system(size: 12)).foregroundStyle(theme.helpText)
-            }
-            .disabled(!store.notificationsEnabled)
-            .opacity(store.notificationsEnabled ? 1 : 0.5)
-
-            Text("Pick which notification types this iPhone emits. \"Notify\" plays the water-drop chime; the other choice plays the same sound the feature uses — the configured athan or Friday recitation file (the notification sound lasts 30 s at most). Tap the notification to continue the full recording in the app. A Tasbih reminder opens the Tasbih counter.")
-                .font(.system(size: 13)).foregroundStyle(theme.helpText)
-        }
     }
 
     /// "Notify" (water drop) vs the feature's own sound — full-width

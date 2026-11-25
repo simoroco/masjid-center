@@ -5,6 +5,8 @@ import Foundation
 
 enum ICSClient {
 
+    static let maxBytes = 8 * 1024 * 1024
+
     /// Builds the PrayerWebCal URL for a position (same format the server stores).
     static func icsURL(city: String, lat: Double, lon: Double, tz: String) -> String {
         let c = city.replacingOccurrences(of: " ", with: "_")
@@ -21,12 +23,22 @@ enum ICSClient {
 
     /// Downloads + parses the ICS feed → [date: [Prayer]] for the next 3 months.
     static func fetch(urlString: String) async throws -> [String: [Prayer]] {
-        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
+        // The link is user-editable (field, CSV import, server setting): only
+        // web links, never file:/data:/ftp: schemes.
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host?.isEmpty == false
+        else { throw URLError(.badURL) }
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.setValue("MasjidCenter-iOS", forHTTPHeaderField: "User-Agent")
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (bytes, resp) = try await URLSession.shared.bytes(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
+        }
+        // A prayer calendar is a few hundred KB: refuse anything absurd.
+        var data = Data()
+        for try await b in bytes {
+            data.append(b)
+            if data.count > maxBytes { throw URLError(.dataLengthExceedsMaximum) }
         }
         return parse(String(decoding: data, as: UTF8.self))
     }

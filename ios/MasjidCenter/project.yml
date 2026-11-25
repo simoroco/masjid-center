@@ -30,6 +30,9 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocationWhenInUseUsageDescription: Your location is used once to download prayer times for your city.
+        NSLocalNetworkUsageDescription: Used to find your Masjid Center server on your local network and to play its audio files.
+        UIBackgroundModes:
+          - audio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.masjidcenter.app

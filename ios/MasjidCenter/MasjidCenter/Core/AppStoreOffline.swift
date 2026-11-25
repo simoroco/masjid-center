@@ -1,4 +1,6 @@
 import Foundation
+import MediaPlayer
+import UIKit
 import SwiftUI
 import Combine
 
@@ -336,9 +338,9 @@ extension AppStore {
     /// Plays the bundled athan (standalone) — same UX as server playback.
     func playLocalAthan() {
         if let file = settings["audio_file"], let url = AC.bundledAudioURL(file) {
-            audio.play(url: url, banner: "Athan calling...", isPrayer: true)
+            audio.play(url: url, banner: "Athan calling...", isPrayer: true, force: true)
         } else if let url = AC.bundledAudioURL("default_athan.mp3") {
-            audio.play(url: url, banner: "Athan calling...", isPrayer: true)
+            audio.play(url: url, banner: "Athan calling...", isPrayer: true, force: true)
         }
     }
 
@@ -353,7 +355,7 @@ extension AppStore {
         let file = settings["friday_quran_file"] ?? AC.bundledQurans[0]
         let url = AC.bundledAudioURL(file) ?? AC.bundledAudioURL(AC.bundledQurans[0])
         guard let url else { showToast("Quran audio is not bundled"); return }
-        audio.play(url: url, banner: "Al Kahf Sourat recitation playing")
+        audio.play(url: url, banner: "Al Kahf Sourat recitation playing", kind: .quran, force: true)
     }
 
     /// Standalone/offline Friday recitation trigger (runs in the 5s loop) —
@@ -744,7 +746,7 @@ extension AppStore {
                 showToast("Audio file not available"); return
             }
             audio.play(url: url, banner: isAthan ? "Athan calling..." : "Al Kahf Sourat recitation playing",
-                       isPrayer: isAthan, startAt: start)
+                       kind: isAthan ? .athan : .quran, isPrayer: isAthan, startAt: start)
         default: break
         }
     }
@@ -892,20 +894,29 @@ extension AppStore {
 
     /// Produces a ≤30 s .caf in Library/Sounds from the configured audio file.
     /// Bundled files transcode locally; server-only files are downloaded first.
-    private func buildNotificationSound(file: String, quran: Bool, out: String) async -> String? {
+    func buildNotificationSound(file: String, quran: Bool, out: String, skipBundle: Bool = false) async -> String? {
         let dst = NotificationSoundMaker.soundsDirectory.appendingPathComponent(out)
-        if let u = AC.bundledAudioURL(file),
+        if !skipBundle, let u = AC.bundledAudioURL(file),
            await NotificationSoundMaker.make(from: u, to: dst) {
             return out
         }
         guard !isStandalone, connected,
-              let url = quran ? api.quranURL(file) : api.athanURL(file),
-              let (tmp, resp) = try? await URLSession.shared.download(from: url),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              await NotificationSoundMaker.make(fromDownload: tmp,
-                                                fileExtension: (file as NSString).pathExtension,
-                                                to: dst) else { return nil }
-        return out
+              let url = quran ? api.quranURL(file) : api.athanURL(file) else { return nil }
+        // Only the first 29 s are needed: ask for the head of the file (a 96 MB
+        // recitation would otherwise be downloaded in full for nothing). A
+        // server ignoring Range answers 200 with the whole file — still fine;
+        // if the truncated head can't be decoded (e.g. m4a with a trailing
+        // index) the file is fetched in full.
+        let ext = (file as NSString).pathExtension
+        for ranged in [true, false] {
+            var req = URLRequest(url: url, timeoutInterval: 30)
+            if ranged { req.setValue("bytes=0-6291455", forHTTPHeaderField: "Range") }
+            guard let (tmp, resp) = try? await URLSession.shared.download(for: req),
+                  let code = (resp as? HTTPURLResponse)?.statusCode, code == 200 || code == 206 else { continue }
+            if await NotificationSoundMaker.make(fromDownload: tmp, fileExtension: ext, to: dst) { return out }
+            if code == 200 { break }   // already the whole file — a second attempt can't help
+        }
+        return nil
     }
 
     /// Deletes the resolved notification sounds (app reset / full cleanup).
@@ -994,3 +1005,67 @@ extension AppStore {
         return (pray, acts)
     }
 }
+
+
+#if DEBUG
+// MARK: - E2E audio scenario (Debug builds only)
+// `-audioDebug athan|quran [-audioDebugKeep]`: plays the bundled file and logs,
+// at each step, what iOS's native player (Now Playing) was given, through the
+// very same pause/resume/seek the Control Center commands call.
+extension AppStore {
+    func runAudioDebugScenario() async {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-audioDebug"), i + 1 < args.count else { return }
+        let isAthan = args[i + 1] == "athan"
+        let keep = args.contains("-audioDebugKeep")
+        audio.playbackGate = { true }   // in-memory only: the persisted "App notifications" setting is untouched
+        func log(_ step: String) {
+            let c = MPNowPlayingInfoCenter.default()
+            let info = c.nowPlayingInfo
+            let rc = MPRemoteCommandCenter.shared()
+            NotificationManager.e2eLog("audio[\(step)] isPlaying=\(audio.isPlaying) isPaused=\(audio.isPaused) t=\(String(format: "%.1f", audio.currentTime)) state=\(c.playbackState.rawValue) title=\(info?[MPMediaItemPropertyTitle] as? String ?? "nil") artist=\(info?[MPMediaItemPropertyArtist] as? String ?? "nil") elapsed=\(info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? -1) rate=\(info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? -1) duration=\(info?[MPMediaItemPropertyPlaybackDuration] as? Double ?? -1) artwork=\(info?[MPMediaItemPropertyArtwork] != nil) cmds[play=\(rc.playCommand.isEnabled) pause=\(rc.pauseCommand.isEnabled) toggle=\(rc.togglePlayPauseCommand.isEnabled) stop=\(rc.stopCommand.isEnabled) seek=\(rc.changePlaybackPositionCommand.isEnabled) skipF=\(rc.skipForwardCommand.isEnabled) skipB=\(rc.skipBackwardCommand.isEnabled)]")
+        }
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        if isAthan { playLocalAthan() } else { playLocalQuran() }
+        try? await Task.sleep(nanoseconds: 3_000_000_000); log("playing")
+        audio.pause()
+        try? await Task.sleep(nanoseconds: 2_000_000_000); log("paused")
+        try? await Task.sleep(nanoseconds: 2_000_000_000); log("paused+2s (position must not advance)")
+        audio.resume()
+        try? await Task.sleep(nanoseconds: 2_000_000_000); log("resumed")
+        audio.seek(to: audio.currentTime + 15)
+        try? await Task.sleep(nanoseconds: 1_500_000_000); log("seek+15")
+        if args.contains("-audioDebugRemote") {
+            // Real round trip through iOS: the commands are sent to mediaremoted,
+            // which routes them to this app's MPRemoteCommandCenter handlers —
+            // exactly what a Control Center / lock screen / headset tap does.
+            typealias Send = @convention(c) (UInt32, CFDictionary?) -> Void
+            guard let h = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW),
+                  let sym = dlsym(h, "MRMediaRemoteSendCommand") else { NotificationManager.e2eLog("audio[remote] MediaRemote unavailable"); return }
+            let send = unsafeBitCast(sym, to: Send.self)
+            let skip = ["kMRMediaRemoteOptionSkipInterval": 15] as CFDictionary
+            let pos = ["kMRMediaRemoteOptionPlaybackPosition": 100.0] as CFDictionary
+            let steps: [(String, UInt32, CFDictionary?)] = [
+                ("pause", 1, nil), ("play", 0, nil), ("togglePlayPause→pause", 2, nil), ("togglePlayPause→play", 2, nil),
+                ("skipForward+15", 17, skip), ("skipBackward-15", 18, skip), ("seekTo100s", 24, pos), ("stop", 3, nil)]
+            for (name, code, info) in steps {
+                send(code, info)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                log("remote-\(name)")
+            }
+            return
+        }
+        if keep {
+            // Background proof: position must keep advancing while the app is not frontmost.
+            for n in 1...16 {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                let st = UIApplication.shared.applicationState
+                log("keep#\(n) appState=\(st == .active ? "active" : st == .background ? "background" : "inactive")")
+            }
+            return
+        }
+        audio.stopLocal()
+        try? await Task.sleep(nanoseconds: 500_000_000); log("stopped")
+    }
+}
+#endif

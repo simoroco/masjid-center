@@ -151,10 +151,11 @@ struct AudioStopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "speaker.wave.2.fill")
+            Image(systemName: store.audio.isPaused ? "pause.fill" : "speaker.wave.2.fill")
                 .font(.system(size: 18))
                 .foregroundStyle(.white)
-                .symbolEffect(.pulse)
+                .symbolEffect(.pulse, isActive: !store.audio.isPaused)
+                .accessibilityIdentifier("audioBannerIcon")
             Text(text)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)

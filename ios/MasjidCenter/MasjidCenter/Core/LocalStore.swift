@@ -340,7 +340,10 @@ final class LocalStore {
     /// the rest). Returns the number of applied rows.
     @discardableResult
     func importConfigCSV(_ csv: String, iosOnly: Bool = false) -> Int {
-        let lines = csv.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        // Backups re-saved on Windows/Excel use CRLF: a trailing "\r" would make
+        // every number ("0\r") unreadable and silently drop the row.
+        let lines = csv.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard lines.count > 1 else { return 0 }
         let headers = lines[0].components(separatedBy: ",")
         guard headers.count >= 3, headers[0] == "type", headers[1] == "key", headers[2] == "value" else { return 0 }
@@ -354,7 +357,7 @@ final class LocalStore {
             switch type {
             case "setting" where !iosOnly || key == "tasbih_target":
                 snap.settings[key] = value
-                if key == "tasbih_target", let n = Int(value) { snap.tasbihTarget = n }
+                if key == "tasbih_target", let n = Int(value) { snap.tasbihTarget = max(1, min(9999, n)) }
                 imported += 1
             case "prayer_setting" where !iosOnly:   // legacy → enable/disable the prayer for all 7 days
                 let en = Int(value) ?? 0
@@ -363,9 +366,9 @@ final class LocalStore {
             case "weekday_mute" where !iosOnly:
                 if let w = Int(key), let m = Int(value) { snap.mutedWeekdays[w] = m; imported += 1 }
             case "prayer_schedule" where !iosOnly:   // key = "name-dow" — split on the LAST '-' (names may contain '-')
-                if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]) {
+                if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]), (0...6).contains(dow) {
                     let name = String(key[..<i])
-                    let en = Int(value) ?? 1
+                    let en = (Int(value) ?? 1) != 0 ? 1 : 0
                     if let idx = snap.schedule.firstIndex(where: { $0.prayer_name == name && $0.day_of_week == dow }) {
                         snap.schedule[idx].enabled = en
                     } else {
@@ -429,9 +432,10 @@ final class LocalStore {
                 snap.iosPlaybackVolume = Double(max(0, min(100, v))) / 100
                 imported += 1
             case "ios_schedule":   // same "name-dow" key format as prayer_schedule
-                if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]) {
+                if let i = key.lastIndex(of: "-"), let dow = Int(key[key.index(after: i)...]),
+                   (0...6).contains(dow), AC.mainPrayers.contains(String(key[..<i])) {
                     let name = String(key[..<i])
-                    let en = Int(value) ?? 1
+                    let en = (Int(value) ?? 1) != 0 ? 1 : 0
                     if let idx = snap.iosSchedule.firstIndex(where: { $0.prayer_name == name && $0.day_of_week == dow }) {
                         snap.iosSchedule[idx].enabled = en
                     } else {

@@ -140,7 +140,7 @@ final class AppStore: ObservableObject {
     func requestLocationPermissionOnce() {
         guard !setupComplete else { return }
         guard !askedLocationPermission else { return }
-        let args = ProcessInfo.processInfo.arguments
+        let args = Self.launchArgs
         guard !args.contains("-resetLocal"), !args.contains("-serverBase") else { return }
         askedLocationPermission = true
         Task { @MainActor in
@@ -169,8 +169,19 @@ final class AppStore: ObservableObject {
     var booted = false
     private var toastTask: Task<Void, Never>?
 
+    /// UI-test / e2e launch arguments (-resetLocal, -serverBase…) exist in Debug
+    /// builds only: a shipped build never lets a launch argument wipe the data
+    /// or redirect the app to another server.
+    static let launchArgs: [String] = {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments
+        #else
+        []
+        #endif
+    }()
+
     init() {
-        let args = ProcessInfo.processInfo.arguments
+        let args = Self.launchArgs
         // UI-test mode: kill animations so element frames are stable for XCUI hit-testing.
         if args.contains("-resetLocal") || args.contains("-serverBase") {
             UIView.setAnimationsEnabled(false)
@@ -183,6 +194,14 @@ final class AppStore: ObservableObject {
                 UserDefaults.standard.removePersistentDomain(forName: bid)
             }
         }
+        #if DEBUG
+        // e2e hook: -debugMaster on|off flips "App notifications" without the
+        // permission prompt (device runs restore the user's value afterwards).
+        if let i = args.firstIndex(of: "-debugMaster"), args.count > i + 1 {
+            LocalStore.shared.snap.notificationsEnabled = args[i + 1] == "on"
+            LocalStore.shared.save()
+        }
+        #endif
         var saved = UserDefaults.standard.string(forKey: "serverBaseURL") ?? ""
         // UI-test hook: -serverBase <url>
         if let i = args.firstIndex(of: "-serverBase"), args.count > i + 1 {
@@ -254,7 +273,6 @@ final class AppStore: ObservableObject {
         Task { await cacheUpcomingFromServer() }
         Task { await cacheAllChecksFromServer() }
         Task { await refreshNotificationSounds() }
-        await playOnPageLoad()
     }
 
     func startLoops() {
@@ -934,17 +952,9 @@ final class AppStore: ObservableObject {
             guard key != lastPlayedQuran else { return }
             lastPlayedQuran = key
             if iosAudioEnabled, let url = api.quranURL(file) {
-                audio.play(url: url, banner: "Al Kahf Sourat recitation playing")
+                audio.play(url: url, banner: "Al Kahf Sourat recitation playing", kind: .quran)
             }
         }
-    }
-
-    /// playOnPageLoad() — startup sound on app open.
-    private func playOnPageLoad() async {
-        guard settings["play_on_page_load"] == "1",
-              ["browser", "both"].contains(settings["audio_output"] ?? "both"),
-              let url = api.startupURL() else { return }
-        audio.play(url: url, banner: "Startup sound")
     }
 
     // MARK: - Audio actions
@@ -956,30 +966,20 @@ final class AppStore: ObservableObject {
         if !isStandalone && configured { try? await api.stopAudio() }
     }
 
-    /// Gate + hint for user-tapped play buttons: when the master switch is off
-    /// the tap would be silently ignored, so explain why instead.
-    private func requireIOSAudio() -> Bool {
-        if iosAudioEnabled { return true }
-        showToast("Enable \"App notifications\" in Settings → Notifications to play sounds on this iPhone")
-        return false
-    }
-
     func testAthanWeb() {
-        guard requireIOSAudio() else { return }
         if isStandalone || !connected { playLocalAthan(); return }
         let file = settings["audio_file"] ?? "Masjid Al-Haram.mp3"
         if let url = api.athanURL(file) {
-            audio.play(url: url, banner: "Athan calling (app)...")
+            audio.play(url: url, banner: "Athan calling (app)...", force: true)
         }
     }
 
     func testQuranWeb() {
-        guard requireIOSAudio() else { return }
         // No server reachability → bundled file; online → 30s server preview.
         if isStandalone || !connected { playLocalQuran(); return }
         let file = settings["friday_quran_file"] ?? "Sourat Al Kahf - Hani Arrifai.mp3"
         if let url = api.quranURL(file) {
-            audio.play(url: url, banner: "Quran reciting (30s preview)...", limit30s: true)
+            audio.play(url: url, banner: "Quran reciting (30s preview)...", kind: .quran, limit30s: true, force: true)
         }
     }
 
@@ -998,7 +998,7 @@ final class AppStore: ObservableObject {
     /// "Listen to Sourat Al Kahf now"
     func playFullQuran() async {
         if isStandalone || !connected {
-            if requireIOSAudio() { playLocalQuran() }
+            playLocalQuran()
             return
         }
         let output = settings["audio_output"] ?? "both"
@@ -1008,10 +1008,8 @@ final class AppStore: ObservableObject {
             if output == "server" { audio.showServerBanner("Al Kahf Sourat recitation playing", duration: 3600) }
         }
         if output == "browser" || output == "both" {
-            // Server playback above is unaffected; the iPhone part still needs
-            // the master switch (silent gate in AudioManager + hint here).
-            if requireIOSAudio(), let url = api.quranURL(file) {
-                audio.play(url: url, banner: "Al Kahf Sourat recitation playing")
+            if let url = api.quranURL(file) {
+                audio.play(url: url, banner: "Al Kahf Sourat recitation playing", kind: .quran, force: true)
             }
         }
     }

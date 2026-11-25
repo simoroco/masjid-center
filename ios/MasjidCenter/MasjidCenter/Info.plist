@@ -25,8 +25,14 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to find your Masjid Center server on your local network and to play its audio files.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used once to download prayer times for your city.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UILaunchScreen_Generation</key>
